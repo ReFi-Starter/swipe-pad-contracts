@@ -92,7 +92,7 @@ contract Pool is Owned, Pausable {
 		_;
 	}
 
-	constructor(address _owner) Owned(_owner) {}
+	constructor() Owned(msg.sender) {}
 
 	// ----------------------------------------------------------------------------
 	// Participant Functions
@@ -145,15 +145,9 @@ contract Pool is Owned, Pausable {
 		require(isParticipant[msg.sender][poolId], "Not a participant");
 		require(participantDetail[msg.sender][poolId].refunded == false, "Already refunded");
 
-		// Charge fees if event is < 24 hours to start or started
-		if (block.timestamp >= poolDetail[poolId].timeStart - 1 days) {
-			uint256 fees = poolAdmin[poolId].penaltyFeeRate * participantDetail[msg.sender][poolId].deposit / FEES_PRECISION;
-			participantDetail[msg.sender][poolId].feesCharged += fees;
-			poolBalance[poolId].feesAccumulated += fees;
-		} else if (block.timestamp > poolDetail[poolId].timeStart) {
-			uint256 fees = participantDetail[msg.sender][poolId].deposit;
-			participantDetail[msg.sender][poolId].feesCharged += fees;
-			poolBalance[poolId].feesAccumulated += fees;
+		// Apply fees if pool is not deleted
+		if (poolStatus[poolId] == POOLSTATUS.DELETED) {
+			_applyFees(poolId);
 		}
 		_refund(poolId, msg.sender);
 	}
@@ -360,6 +354,10 @@ contract Pool is Owned, Pausable {
 	// View Functions
 	// ----------------------------------------------------------------------------
 
+	function getHost(uint256 poolId) external view returns (address) {
+		return poolAdmin[poolId].host;
+	}
+
 	function getPoolsCreatedBy(address host) external view returns (uint256[] memory) {
 		return createdPools[host];
 	}
@@ -427,5 +425,23 @@ contract Pool is Owned, Pausable {
 		require(success, "Transfer failed");
 
 		emit Refund(poolId, participant, amount);
+	}
+
+
+	/**
+	 * @notice Apply fees to a participant
+	 * @param poolId The pool id
+	 */
+	function _applyFees(uint256 poolId) internal {
+		// Charge fees if event is < 24 hours to start or started
+		if (block.timestamp >= poolDetail[poolId].timeStart - 1 days) {
+			uint256 fees = poolAdmin[poolId].penaltyFeeRate * participantDetail[msg.sender][poolId].deposit / FEES_PRECISION;
+			participantDetail[msg.sender][poolId].feesCharged += fees;
+			poolBalance[poolId].feesAccumulated += fees;
+		} else if (block.timestamp > poolDetail[poolId].timeStart) {
+			uint256 fees = participantDetail[msg.sender][poolId].deposit;
+			participantDetail[msg.sender][poolId].feesCharged += fees;
+			poolBalance[poolId].feesAccumulated += fees;
+		}
 	}
 }
