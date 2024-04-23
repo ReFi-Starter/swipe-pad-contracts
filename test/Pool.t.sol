@@ -3,13 +3,7 @@ pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
 import {Pool} from "../src/Pool.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-contract Droplet is ERC20 {
-    constructor() ERC20("Droplet", "DROP") {
-        _mint(msg.sender, 1000000e18);
-    }
-}
+import {Droplet} from "../src/mock/MockERC20.sol";
 
 contract PoolTest is Test {
     Pool public pool;
@@ -26,6 +20,7 @@ contract PoolTest is Test {
         vm.startPrank(alice);
         address[] memory cohosts = new address[](0);
         uint16 feeRate = 10000;
+
         pool.createPool(
             uint40(block.timestamp),
             uint40(block.timestamp + 100),
@@ -36,6 +31,7 @@ contract PoolTest is Test {
             cohosts
         );
         address res = pool.getHost(1);
+
         assertEq(res, alice);
         vm.stopPrank();
     }

@@ -1,53 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+/// Interfaces
+import {IPool} from "./interface/IPool.sol";
+/// Libraries
+import "./library/ConstantsLib.sol";
+import {EventsLib} from "./library/EventsLib.sol";
+import {ErrorsLib} from "./library/ErrorsLib.sol";
+
+/// Dependencies
 import {Owned} from "solmate/auth/Owned.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract Pool is Owned, Pausable {
-	uint16 constant public FEES_PRECISION = 100;
-
-	enum POOLSTATUS {
-		INACTIVE,
-		DEPOSIT_ENABLED,
-		STARTED,
-		ENDED,
-		DELETED
-	}
-
-	struct PoolAdmin {
-		address host;
-		uint16 penaltyFeeRate; // 0.01% (1) to 100% (10000)
-		address[] cohosts;
-	}
-
-	struct PoolDetail {
-		uint40 timeStart;
-		uint40 timeEnd;
-		string poolName;
-		uint256 depositAmountPerPerson;
-	}
-
-	struct PoolBalance {
-		uint256 totalDeposits;
-		uint256 feesAccumulated;
-		uint256 feesCollected;
-		uint256 balance;
-	}
-
-	struct ParticipantDetail {
-		uint256 deposit; // used for isParticipant too
-		uint256 feesCharged;
-		uint256 toClaim; // winnings
-		bool claimed;
-		bool refunded;
-	}
-
+contract Pool is IPool, Owned, Pausable {
 	uint256 public latestPoolId; // Start from 1, 0 is invalid
 
-	// Pool specific mappings
+	/// @dev Pool specific mappings
 	mapping(uint256 => PoolAdmin) public poolAdmin;
 	mapping(uint256 => PoolDetail) public poolDetail;
 	mapping(uint256 => IERC20) public poolToken;
@@ -55,39 +25,30 @@ contract Pool is Owned, Pausable {
 	mapping(uint256 => address[]) public participants;
 	mapping(uint256 => POOLSTATUS) public poolStatus;
 
-	// Pool admin specific mappings
+	/// @dev Pool admin specific mappings
 	mapping(address => uint256[]) public createdPools;
 	mapping(address => mapping(uint256 => bool)) public isHost;
 	mapping(address => mapping(uint256 => bool)) public isCohost;
 
-	// User specific mappings
+	/// @dev User specific mappings
 	mapping(address => uint256[]) public joinedPools;
 	mapping(address => mapping(uint256 => bool)) public isParticipant;
 	mapping(address => mapping(uint256 => ParticipantDetail)) public participantDetail;
 
-	event PoolCreated(uint256 poolId, address host, string poolName);
-	event PoolStatusChanged(uint256 poolId, POOLSTATUS status);
-	event Refund(uint256 poolId, address participant, uint256 amount);
-	event Deposit(uint256 poolId, address participant, uint256 amount);
-	event FeesCollected(uint256 poolId, address host, uint256 fees);
-	event CohostAdded(uint256 poolId, address cohost);
-	event CohostRemoved(uint256 poolId, address cohost);
-
-	error Unauthorized(address caller);
-
-	// Check if the caller is the host or cohost
+	/// @notice Modifier to check if user is host or cohost
 	modifier onlyHostOrCohost(uint256 poolId) {
 		if (!isHost[msg.sender][poolId]) {
 			if (!isCohost[msg.sender][poolId]) {
-				revert Unauthorized(msg.sender);
+				revert ErrorsLib.Unauthorized(msg.sender);
 			}
 		}
 		_;
 	}
 
+	/// @notice Modifier to check if user is host
 	modifier onlyHost(uint256 poolId) {
 		if (!isHost[msg.sender][poolId]) {
-			revert Unauthorized(msg.sender);
+			revert ErrorsLib.Unauthorized(msg.sender);
 		}
 		_;
 	}
@@ -128,7 +89,7 @@ contract Pool is Owned, Pausable {
 		isParticipant[msg.sender][poolId] = true;
 		participantDetail[msg.sender][poolId].deposit = amount;
 
-		emit Deposit(poolId, msg.sender, amount);
+		emit EventsLib.Deposit(poolId, msg.sender, amount);
 		return true;
 	}
 
@@ -207,7 +168,7 @@ contract Pool is Owned, Pausable {
 				isCohost[cohosts[i]][latestPoolId] = true;
 			}
 		}
-		emit PoolCreated(latestPoolId, msg.sender, poolName);
+		emit EventsLib.PoolCreated(latestPoolId, msg.sender, poolName);
 		return latestPoolId;
 	}
 
@@ -223,7 +184,7 @@ contract Pool is Owned, Pausable {
 		require(poolStatus[poolId] == POOLSTATUS.INACTIVE, "Pool already active");
 
 		poolStatus[poolId] = POOLSTATUS.DEPOSIT_ENABLED;
-		emit PoolStatusChanged(poolId, POOLSTATUS.DEPOSIT_ENABLED);
+		emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.DEPOSIT_ENABLED);
 	}
 
 	/**
@@ -239,7 +200,7 @@ contract Pool is Owned, Pausable {
 
 		poolStatus[poolId] = POOLSTATUS.STARTED;
 		poolDetail[poolId].timeStart = uint40(block.timestamp); // update actual start time
-		emit PoolStatusChanged(poolId, POOLSTATUS.STARTED);
+		emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.STARTED);
 	}
 
 	/**
@@ -255,7 +216,7 @@ contract Pool is Owned, Pausable {
 
 		poolStatus[poolId] = POOLSTATUS.ENDED;
 		poolDetail[poolId].timeEnd = uint40(block.timestamp); // update actual end time
-		emit PoolStatusChanged(poolId, POOLSTATUS.ENDED);
+		emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.ENDED);
 	}
 
 	/**
@@ -287,7 +248,7 @@ contract Pool is Owned, Pausable {
 	function deletePool(uint256 poolId) external onlyHost(poolId) whenNotPaused {
 		poolStatus[poolId] = POOLSTATUS.DELETED;
 
-		emit PoolStatusChanged(poolId, POOLSTATUS.DELETED);
+		emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.DELETED);
 	}
 
 	/**
@@ -305,7 +266,7 @@ contract Pool is Owned, Pausable {
 		bool success = poolToken[poolId].transfer(poolAdmin[poolId].host, fees);
 		require(success, "Transfer failed");
 
-		emit FeesCollected(poolId, poolAdmin[poolId].host, fees);
+		emit EventsLib.FeesCollected(poolId, poolAdmin[poolId].host, fees);
 	}
 
 	/**
@@ -324,7 +285,7 @@ contract Pool is Owned, Pausable {
 		poolAdmin[poolId].cohosts.push(cohost);
 		isCohost[cohost][poolId] = true;
 
-		emit CohostAdded(poolId, cohost);
+		emit EventsLib.CohostAdded(poolId, cohost);
 	}
 
 	/**
@@ -347,7 +308,7 @@ contract Pool is Owned, Pausable {
 			}
 		}
 
-		emit CohostRemoved(poolId, cohost);
+		emit EventsLib.CohostRemoved(poolId, cohost);
 	}
 
 	// ----------------------------------------------------------------------------
@@ -424,7 +385,7 @@ contract Pool is Owned, Pausable {
 		bool success = poolToken[poolId].transfer(participant, amount);
 		require(success, "Transfer failed");
 
-		emit Refund(poolId, participant, amount);
+		emit EventsLib.Refund(poolId, participant, amount);
 	}
 
 
