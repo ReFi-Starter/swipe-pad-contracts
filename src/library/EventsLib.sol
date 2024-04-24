@@ -9,6 +9,9 @@ library EventsLib {
 	event Refund(uint256 poolId, address participant, uint256 amount);
 	event Deposit(uint256 poolId, address participant, uint256 amount);
 	event FeesCollected(uint256 poolId, address host, uint256 fees);
+	event FeesCharged(uint256 poolId, address participant, uint256 fees, bool chargedAll);
 	event CohostAdded(uint256 poolId, address cohost);
 	event CohostRemoved(uint256 poolId, address cohost);
+	event ParticipantRemoved(uint256 poolId, address participant);
+	event JoinedPoolsRemoved(uint256 poolId, address participant);
 }

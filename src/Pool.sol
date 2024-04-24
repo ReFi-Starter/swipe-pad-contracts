@@ -7,6 +7,8 @@ import {IPool} from "./interface/IPool.sol";
 import "./library/ConstantsLib.sol";
 import {EventsLib} from "./library/EventsLib.sol";
 import {ErrorsLib} from "./library/ErrorsLib.sol";
+import {AdminLib} from "./library/AdminLib.sol";
+import {DetailLib} from "./library/DetailLib.sol";
 
 /// Dependencies
 import {Owned} from "solmate/auth/Owned.sol";
@@ -15,6 +17,9 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract Pool is IPool, Owned, Pausable {
+	using AdminLib for IPool.PoolAdmin;
+	using DetailLib for IPool.PoolDetail;
+
 	uint256 public latestPoolId; // Start from 1, 0 is invalid
 
 	/// @dev Pool specific mappings
@@ -22,13 +27,14 @@ contract Pool is IPool, Owned, Pausable {
 	mapping(uint256 => PoolDetail) public poolDetail;
 	mapping(uint256 => IERC20) public poolToken;
 	mapping(uint256 => PoolBalance) public poolBalance;
-	mapping(uint256 => address[]) public participants;
 	mapping(uint256 => POOLSTATUS) public poolStatus;
+	mapping(uint256 => address[]) public participants;
 
 	/// @dev Pool admin specific mappings
 	mapping(address => uint256[]) public createdPools;
 	mapping(address => mapping(uint256 => bool)) public isHost;
 	mapping(address => mapping(uint256 => bool)) public isCohost;
+	mapping(address => mapping(uint256 => uint256)) public cohostIndex; // Store index for easy removal
 
 	/// @dev User specific mappings
 	mapping(address => uint256[]) public joinedPools;
@@ -71,9 +77,9 @@ contract Pool is IPool, Owned, Pausable {
 	 */
 	function deposit(uint256 poolId, uint256 amount) external whenNotPaused returns (bool) {
 		require(poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED, "Deposit not enabled");
-		require(block.timestamp <= poolDetail[poolId].timeStart, "Pool started");
+		require(block.timestamp <= poolDetail[poolId].getTimeStart(), "Pool started");
 		require(isParticipant[msg.sender][poolId] == false, "Already in pool");
-		require(amount == poolDetail[poolId].depositAmountPerPerson, "Deposit amount not correct");
+		require(amount == poolDetail[poolId].getDepositAmountPerPerson(), "Deposit amount not correct");
 
 		// Transfer tokens from user to pool
 		bool success = poolToken[poolId].transferFrom(msg.sender, address(this), amount);
@@ -82,9 +88,11 @@ contract Pool is IPool, Owned, Pausable {
 		// Update pool details
 		poolBalance[poolId].totalDeposits += amount;
 		poolBalance[poolId].balance += amount;
+		participantDetail[msg.sender][poolId].participantIndex = uint120(participants[poolId].length);
 		participants[poolId].push(msg.sender);
 
 		// Update participant details
+		participantDetail[msg.sender][poolId].joinedPoolsIndex = uint120(joinedPools[msg.sender].length);
 		joinedPools[msg.sender].push(poolId);
 		isParticipant[msg.sender][poolId] = true;
 		participantDetail[msg.sender][poolId].deposit = amount;
@@ -107,7 +115,7 @@ contract Pool is IPool, Owned, Pausable {
 		require(participantDetail[msg.sender][poolId].refunded == false, "Already refunded");
 
 		// Apply fees if pool is not deleted
-		if (poolStatus[poolId] == POOLSTATUS.DELETED) {
+		if (poolStatus[poolId] != POOLSTATUS.DELETED) {
 			_applyFees(poolId);
 		}
 		_refund(poolId, msg.sender);
@@ -140,20 +148,20 @@ contract Pool is IPool, Owned, Pausable {
 	) external whenNotPaused returns (uint256) {
 		require(timeStart < timeEnd, "Invalid timing");
 		require(address(token) != address(0), "Invalid token");
-		require(penaltyFeeRate <= 100 * FEES_PRECISION, "Invalid fees rate");
+		require(penaltyFeeRate <= FEES_PRECISION, "Invalid fees rate");
 
 		// Increment pool id
 		latestPoolId++;
 
 		// Pool details
-		poolDetail[latestPoolId].timeStart = timeStart;
-		poolDetail[latestPoolId].timeEnd = timeEnd;
-		poolDetail[latestPoolId].poolName = poolName;
-		poolDetail[latestPoolId].depositAmountPerPerson = depositAmountPerPerson;
+		poolDetail[latestPoolId].setTimeStart(timeStart);
+		poolDetail[latestPoolId].setTimeEnd(timeEnd);
+		poolDetail[latestPoolId].setPoolName(poolName);
+		poolDetail[latestPoolId].setDepositAmountPerPerson(depositAmountPerPerson);
 
 		// Pool admin details
-		poolAdmin[latestPoolId].penaltyFeeRate = penaltyFeeRate;
-		poolAdmin[latestPoolId].host = msg.sender;
+		poolAdmin[latestPoolId].setPenaltyFeeRate(penaltyFeeRate);
+		poolAdmin[latestPoolId].setHost(msg.sender);
 		isHost[msg.sender][latestPoolId] = true;
 		createdPools[msg.sender].push(latestPoolId);
 
@@ -164,8 +172,13 @@ contract Pool is IPool, Owned, Pausable {
 		if (cohosts.length != 0) {
 			for (uint256 i = 0; i < cohosts.length; i++) {
 				require(cohosts[i] != msg.sender, "Host cannot be cohost");
-				poolAdmin[latestPoolId].cohosts.push(cohosts[i]);
-				isCohost[cohosts[i]][latestPoolId] = true;
+				AdminLib.addCohost(
+					poolAdmin,
+					cohostIndex,
+					isCohost,
+					cohosts[i],
+					latestPoolId
+				);
 			}
 		}
 		emit EventsLib.PoolCreated(latestPoolId, msg.sender, poolName);
@@ -199,7 +212,7 @@ contract Pool is IPool, Owned, Pausable {
 		require(poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED, "Deposit not enabled yet");
 
 		poolStatus[poolId] = POOLSTATUS.STARTED;
-		poolDetail[poolId].timeStart = uint40(block.timestamp); // update actual start time
+		poolDetail[poolId].setTimeStart(uint40(block.timestamp)); // update actual start time
 		emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.STARTED);
 	}
 
@@ -215,7 +228,7 @@ contract Pool is IPool, Owned, Pausable {
 		require(poolStatus[poolId] == POOLSTATUS.STARTED, "Pool not started");
 
 		poolStatus[poolId] = POOLSTATUS.ENDED;
-		poolDetail[poolId].timeEnd = uint40(block.timestamp); // update actual end time
+		poolDetail[poolId].setTimeEnd(uint40(block.timestamp)); // update actual end time
 		emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.ENDED);
 	}
 
@@ -263,10 +276,10 @@ contract Pool is IPool, Owned, Pausable {
 		poolBalance[poolId].balance -= fees;
 		poolBalance[poolId].feesCollected += fees;
 
-		bool success = poolToken[poolId].transfer(poolAdmin[poolId].host, fees);
+		bool success = poolToken[poolId].transfer(poolAdmin[poolId].getHost(), fees);
 		require(success, "Transfer failed");
 
-		emit EventsLib.FeesCollected(poolId, poolAdmin[poolId].host, fees);
+		emit EventsLib.FeesCollected(poolId, poolAdmin[poolId].getHost(), fees);
 	}
 
 	/**
@@ -280,10 +293,9 @@ contract Pool is IPool, Owned, Pausable {
 	 */
 	function addCohost(uint256 poolId, address cohost) external onlyHost(poolId) whenNotPaused {
 		require(!isCohost[cohost][poolId], "Cohost already exist");
-		require(cohost != poolAdmin[poolId].host, "Host cannot be cohost");
+		require(cohost != poolAdmin[poolId].getHost(), "Host cannot be cohost");
 
-		poolAdmin[poolId].cohosts.push(cohost);
-		isCohost[cohost][poolId] = true;
+		AdminLib.addCohost(poolAdmin, cohostIndex, isCohost, cohost, poolId);
 
 		emit EventsLib.CohostAdded(poolId, cohost);
 	}
@@ -299,15 +311,7 @@ contract Pool is IPool, Owned, Pausable {
 	function removeCohost(uint256 poolId, address cohost) external onlyHost(poolId) whenNotPaused {
 		require(isCohost[cohost][poolId], "Cohost does not exist");
 
-		PoolAdmin memory pool = poolAdmin[poolId];
-		for (uint256 i = 0; i < pool.cohosts.length; i++) {
-			if (pool.cohosts[i] == cohost) {
-				poolAdmin[poolId].cohosts[i] = pool.cohosts[pool.cohosts.length - 1];
-				poolAdmin[poolId].cohosts.pop();
-				break;
-			}
-		}
-
+		AdminLib.removeCohost(poolAdmin, cohostIndex, isCohost, cohost, poolId);
 		emit EventsLib.CohostRemoved(poolId, cohost);
 	}
 
@@ -316,11 +320,27 @@ contract Pool is IPool, Owned, Pausable {
 	// ----------------------------------------------------------------------------
 
 	function getHost(uint256 poolId) external view returns (address) {
-		return poolAdmin[poolId].host;
+		return poolAdmin[poolId].getHost();
 	}
 
 	function getPoolsCreatedBy(address host) external view returns (uint256[] memory) {
 		return createdPools[host];
+	}
+
+	function getPoolsJoinedBy(address participant) external view returns (uint256[] memory) {
+		return joinedPools[participant];
+	}
+
+	function getParticipants(uint256 poolId) external view returns (address[] memory) {
+		return participants[poolId];
+	}
+
+	function getParticipantDeposit(address participant, uint256 poolId) public view returns (uint256) {
+		return participantDetail[participant][poolId].deposit;
+	}
+
+	function getPoolFee(uint256 poolId) public view returns (uint16) {
+		return poolAdmin[poolId].getPenaltyFeeRate();
 	}
 
 	// ----------------------------------------------------------------------------
@@ -364,23 +384,27 @@ contract Pool is IPool, Owned, Pausable {
 		poolBalance[poolId].totalDeposits -= amount;
 
 		// Delete participant from pool
-		address[] memory _participants = participants[poolId];
-		for (uint256 i = 0; i < _participants.length; i++) {
-			if (_participants[i] == participant) {
-				participants[poolId][i] = _participants[_participants.length - 1];
-				participants[poolId].pop();
-				break;
-			}
+		uint256 i = participantDetail[participant][poolId].participantIndex;
+		assert(participant == participants[poolId][i]);
+		if (i < participants[poolId].length - 1) {
+			// Move last to replace current index
+			address lastParticipant = participants[poolId][participants[poolId].length - 1];
+			participants[poolId][i] = lastParticipant;
+			participantDetail[lastParticipant][poolId].participantIndex = uint120(i);
 		}
+		participants[poolId].pop();
+		isParticipant[participant][poolId] = false;
 
 		// Delete pool from participant
-		uint256[] memory _joinedPools = joinedPools[participant];
-		for (uint256 i = 0; i < _joinedPools.length; i++) {
-			if (_joinedPools[i] == poolId) {
-				joinedPools[msg.sender][i] = 0;
-				break;
-			}
+		i = participantDetail[participant][poolId].joinedPoolsIndex;
+		assert(poolId == joinedPools[participant][i]);
+		if (i < joinedPools[participant].length - 1) {
+			// Move last to replace current index
+			uint256 lastPool = joinedPools[participant][joinedPools[participant].length - 1];
+			joinedPools[participant][i] = lastPool;
+			participantDetail[participant][lastPool].joinedPoolsIndex = uint120(i);
 		}
+		joinedPools[participant].pop();
 
 		bool success = poolToken[poolId].transfer(participant, amount);
 		require(success, "Transfer failed");
@@ -395,14 +419,18 @@ contract Pool is IPool, Owned, Pausable {
 	 */
 	function _applyFees(uint256 poolId) internal {
 		// Charge fees if event is < 24 hours to start or started
-		if (block.timestamp >= poolDetail[poolId].timeStart - 1 days) {
-			uint256 fees = poolAdmin[poolId].penaltyFeeRate * participantDetail[msg.sender][poolId].deposit / FEES_PRECISION;
+		if (block.timestamp >= poolDetail[poolId].getTimeStart() - 1 days) {
+			uint256 fees = (getPoolFee(poolId) * getParticipantDeposit(msg.sender, poolId)) / FEES_PRECISION;
 			participantDetail[msg.sender][poolId].feesCharged += fees;
 			poolBalance[poolId].feesAccumulated += fees;
-		} else if (block.timestamp > poolDetail[poolId].timeStart) {
-			uint256 fees = participantDetail[msg.sender][poolId].deposit;
+			
+			emit EventsLib.FeesCharged(poolId, msg.sender, fees, false);
+		} else if (block.timestamp > poolDetail[poolId].getTimeStart()) {
+			uint256 fees = getParticipantDeposit(msg.sender, poolId);
 			participantDetail[msg.sender][poolId].feesCharged += fees;
 			poolBalance[poolId].feesAccumulated += fees;
+
+			emit EventsLib.FeesCharged(poolId, msg.sender, fees, true);
 		}
 	}
 }

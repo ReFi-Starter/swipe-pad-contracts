@@ -36,5 +36,7 @@ interface IPool {
 		uint256 toClaim; // winnings
 		bool claimed;
 		bool refunded;
+		uint120 participantIndex; // store index for easy removal
+		uint120 joinedPoolsIndex; // store index for easy removal
 	}	
 }
