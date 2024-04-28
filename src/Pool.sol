@@ -201,7 +201,7 @@ contract Pool is IPool, Owned, Pausable {
         // Pool token
         poolToken[latestPoolId] = IERC20(token);
 
-        emit EventsLib.PoolCreated(latestPoolId, msg.sender, poolName);
+        emit EventsLib.PoolCreated(latestPoolId, msg.sender, poolName, depositAmountPerPerson, penaltyFeeRate, token);
         return latestPoolId;
     }
 
