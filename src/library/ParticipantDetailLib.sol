@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IPool} from "../interface/IPool.sol";
+import {EventsLib} from "./EventsLib.sol";
 
 library ParticipantDetailLib {
     function getDeposit(
@@ -37,6 +38,8 @@ library ParticipantDetailLib {
         }
         participants[poolId].pop();
         isParticipant[participant][poolId] = false;
+
+        emit EventsLib.ParticipantRemoved(poolId, participant);
     }
 
     function removeFromJoinedPool(
@@ -54,6 +57,8 @@ library ParticipantDetailLib {
             setJoinedPoolsIndex(participantDetail[participant][lastPool], i);
         }
         joinedPools[participant].pop();
+
+        emit EventsLib.JoinedPoolsRemoved(poolId, participant);
     }
 
     function setParticipantIndex(IPool.ParticipantDetail storage self, uint256 _participantIndex) internal {
@@ -72,7 +77,7 @@ library ParticipantDetailLib {
         return self.joinedPoolsIndex;
     }
 
-    function isRefunded(IPool.ParticipantDetail storage self) internal view returns (bool) {
+    function hasRefunded(IPool.ParticipantDetail storage self) internal view returns (bool) {
         return self.refunded;
     }
 }

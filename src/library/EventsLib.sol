@@ -14,4 +14,7 @@ library EventsLib {
     event CohostRemoved(uint256 poolId, address cohost);
     event ParticipantRemoved(uint256 poolId, address participant);
     event JoinedPoolsRemoved(uint256 poolId, address participant);
+    event WinnerSet(uint256 poolId, address winner, uint256 amount);
+    event WinningClaimed(uint256 poolId, address winner, uint256 amount);
+    event RemainingBalanceCollected(uint256 poolId, address host, uint256 amount);
 }

@@ -13,7 +13,6 @@ interface IPool {
     struct PoolAdmin {
         address host;
         uint16 penaltyFeeRate; // 0.01% (1) to 100% (10000)
-        address[] cohosts;
     }
 
     struct PoolDetail {
@@ -24,19 +23,23 @@ interface IPool {
     }
 
     struct PoolBalance {
-        uint256 totalDeposits;
+        uint256 totalDeposits; // total deposit amount (won't reduce, for record)
         uint256 feesAccumulated;
         uint256 feesCollected;
-        uint256 balance;
+        uint256 balance; // real current balance of pool
+        uint256 extraBalance;
     }
 
     struct ParticipantDetail {
-        uint256 deposit; // used for isParticipant too
+        uint256 deposit; // used for assertion and isParticipant
         uint256 feesCharged;
-        uint256 toClaim; // winnings
-        bool claimed;
-        bool refunded;
         uint120 participantIndex; // store index for easy removal
         uint120 joinedPoolsIndex; // store index for easy removal
+        bool refunded;
+    }
+
+    struct WinnerDetail {
+        uint256 amountWon;
+        bool claimed;
     }
 }

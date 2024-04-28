@@ -3,6 +3,7 @@ pragma solidity ^0.8.25;
 
 /// Interfaces
 import {IPool} from "./interface/IPool.sol";
+import {IERC20} from "./interface/IERC20.sol";
 /// Libraries
 import "./library/ConstantsLib.sol";
 import {EventsLib} from "./library/EventsLib.sol";
@@ -11,18 +12,22 @@ import {PoolAdminLib} from "./library/PoolAdminLib.sol";
 import {PoolDetailLib} from "./library/PoolDetailLib.sol";
 import {PoolBalanceLib} from "./library/PoolBalanceLib.sol";
 import {ParticipantDetailLib} from "./library/ParticipantDetailLib.sol";
+import {WinnerDetailLib} from "./library/WinnerDetailLib.sol";
+import {UtilsLib} from "./library/UtilsLib.sol";
+import {SafeTransferLib} from "./library/SafeTransferLib.sol";
 
 /// Dependencies
 import {Owned} from "solmate/auth/Owned.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract Pool is IPool, Owned, Pausable {
+    using SafeTransferLib for IERC20;
     using PoolAdminLib for IPool.PoolAdmin;
     using PoolDetailLib for IPool.PoolDetail;
     using PoolBalanceLib for IPool.PoolBalance;
     using ParticipantDetailLib for IPool.ParticipantDetail;
+    using WinnerDetailLib for IPool.WinnerDetail;
 
     uint256 public latestPoolId; // Start from 1, 0 is invalid
 
@@ -33,27 +38,17 @@ contract Pool is IPool, Owned, Pausable {
     mapping(uint256 => PoolBalance) public poolBalance;
     mapping(uint256 => POOLSTATUS) public poolStatus;
     mapping(uint256 => address[]) public participants;
+    mapping(uint256 => address[]) public winners;
 
     /// @dev Pool admin specific mappings
     mapping(address => uint256[]) public createdPools;
     mapping(address => mapping(uint256 => bool)) public isHost;
-    mapping(address => mapping(uint256 => bool)) public isCohost;
-    mapping(address => mapping(uint256 => uint256)) public cohostIndex; // Store index for easy removal
 
     /// @dev User specific mappings
     mapping(address => uint256[]) public joinedPools;
     mapping(address => mapping(uint256 => bool)) public isParticipant;
     mapping(address => mapping(uint256 => ParticipantDetail)) public participantDetail;
-
-    /// @notice Modifier to check if user is host or cohost
-    modifier onlyHostOrCohost(uint256 poolId) {
-        if (!isHost[msg.sender][poolId]) {
-            if (!isCohost[msg.sender][poolId]) {
-                revert ErrorsLib.Unauthorized(msg.sender);
-            }
-        }
-        _;
-    }
+    mapping(address => mapping(uint256 => WinnerDetail)) public winnerDetail;
 
     /// @notice Modifier to check if user is host
     modifier onlyHost(uint256 poolId) {
@@ -83,12 +78,16 @@ contract Pool is IPool, Owned, Pausable {
         require(poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED, "Deposit not enabled");
         require(block.timestamp <= poolDetail[poolId].getTimeStart(), "Pool started");
         require(isParticipant[msg.sender][poolId] == false, "Already in pool");
-        require(amount == poolDetail[poolId].getDepositAmountPerPerson(), "Deposit amount not correct");
+        uint256 amountPerPerson = poolDetail[poolId].getDepositAmountPerPerson();
+        require(amount >= amountPerPerson, "Incorrect amount");
 
         // Transfer tokens from user to pool
-        bool success = poolToken[poolId].transferFrom(msg.sender, address(this), amount);
-        require(success, "Transfer failed");
+        poolToken[poolId].safeTransferFrom(msg.sender, address(this), amount);
 
+        // Excess as extra donation
+        if (amount > amountPerPerson) {
+            poolBalance[poolId].extraBalance += amount - amountPerPerson;
+        }
         // Update pool details
         poolBalance[poolId].totalDeposits += amount;
         poolBalance[poolId].balance += amount;
@@ -99,24 +98,55 @@ contract Pool is IPool, Owned, Pausable {
         participantDetail[msg.sender][poolId].setJoinedPoolsIndex(joinedPools[msg.sender].length);
         joinedPools[msg.sender].push(poolId);
         isParticipant[msg.sender][poolId] = true;
-        participantDetail[msg.sender][poolId].deposit = amount;
+        participantDetail[msg.sender][poolId].deposit = amountPerPerson;
+        if (participantDetail[msg.sender][poolId].hasRefunded()) {
+            participantDetail[msg.sender][poolId].refunded = false; // Edge case for rejoin
+        }
 
         emit EventsLib.Deposit(poolId, msg.sender, amount);
         return true;
     }
 
     /**
-     * @notice Withdraw fees collected
+     * @notice Claim winning from a pool
      * @param poolId The pool id
-     * @dev Only the host or cohost can withdraw fees
      * @dev Pool status must be ENDED
-     * @dev Pool fees collected must be greater than 0
-     * @dev Emits FeesCollected event
+     * @dev User must be a winner
+     * @dev User must not have claimed
+     * @dev Emits WinningClaimed event
+     */
+    function claimWinning(uint256 poolId, address winner) public whenNotPaused {
+        require(poolStatus[poolId] == POOLSTATUS.ENDED, "Pool not ended");
+        require(!winnerDetail[winner][poolId].hasClaimed(), "Already claimed");
+
+        uint256 amount = winnerDetail[winner][poolId].getAmountWon();
+        winnerDetail[winner][poolId].claimed = true;
+
+        poolToken[poolId].safeTransfer(winner, amount);
+
+        emit EventsLib.WinningClaimed(poolId, winner, amount);
+    }
+
+    /// @notice Claim winnings from multiple pools
+    function claimWinnings(uint256[] calldata poolIds, address[] calldata _winners) external whenNotPaused {
+        require(poolIds.length == poolIds.length, "Invalid input");
+        for (uint256 i = 0; i < poolIds.length; i++) {
+            claimWinning(poolIds[i], _winners[i]);
+        }
+    }
+
+    /**
+     * @notice Self refund from a pool
+     * @param poolId The pool id
+     * @dev Pool status must not be ENDED
+     * @dev User must be a participant
+     * @dev User must not have been refunded
+     * @dev Emits Refund event
      */
     function selfRefund(uint256 poolId) external whenNotPaused {
         require(poolStatus[poolId] != POOLSTATUS.ENDED, "Pool already ended");
         require(isParticipant[msg.sender][poolId], "Not a participant");
-        require(participantDetail[msg.sender][poolId].isRefunded() == false, "Already refunded");
+        require(participantDetail[msg.sender][poolId].hasRefunded() == false, "Already refunded");
 
         // Apply fees if pool is not deleted
         if (poolStatus[poolId] != POOLSTATUS.DELETED) {
@@ -137,7 +167,6 @@ contract Pool is IPool, Owned, Pausable {
      * @param depositAmountPerPerson The amount to deposit per person
      * @param penaltyFeeRate The penalty fee rate
      * @param token The token to use for the pool
-     * @param cohosts The cohosts of the pool
      * @dev Pool status will be INACTIVE
      * @dev Emits PoolCreated event
      */
@@ -145,14 +174,13 @@ contract Pool is IPool, Owned, Pausable {
         uint40 timeStart,
         uint40 timeEnd,
         string calldata poolName,
-        uint256 depositAmountPerPerson,
-        uint16 penaltyFeeRate,
-        IERC20 token,
-        address[] calldata cohosts
+        uint256 depositAmountPerPerson, // Can be 0 in case of sponsored pool
+        uint16 penaltyFeeRate, // 10000 = 100%
+        address token
     ) external whenNotPaused returns (uint256) {
         require(timeStart < timeEnd, "Invalid timing");
-        require(address(token) != address(0), "Invalid token");
         require(penaltyFeeRate <= FEES_PRECISION, "Invalid fees rate");
+        require(UtilsLib.isContract(token), "Token not contract");
 
         // Increment pool id
         latestPoolId++;
@@ -170,15 +198,8 @@ contract Pool is IPool, Owned, Pausable {
         createdPools[msg.sender].push(latestPoolId);
 
         // Pool token
-        poolToken[latestPoolId] = token;
+        poolToken[latestPoolId] = IERC20(token);
 
-        // Add cohosts
-        if (cohosts.length != 0) {
-            for (uint256 i = 0; i < cohosts.length; i++) {
-                require(cohosts[i] != msg.sender, "Host cannot be cohost");
-                PoolAdminLib.addCohost(poolAdmin, cohostIndex, isCohost, cohosts[i], latestPoolId);
-            }
-        }
         emit EventsLib.PoolCreated(latestPoolId, msg.sender, poolName);
         return latestPoolId;
     }
@@ -186,12 +207,12 @@ contract Pool is IPool, Owned, Pausable {
     /**
      * @notice Enable deposit for a pool
      * @param poolId The pool id
-     * @dev Only the host or cohost can enable deposit
+     * @dev Only the host can enable deposit
      * @dev Pool status must be INACTIVE
      * @dev Pool status will be changed to DEPOSIT_ENABLED
      * @dev Emits PoolStatusChanged event
      */
-    function enableDeposit(uint256 poolId) external onlyHostOrCohost(poolId) whenNotPaused {
+    function enableDeposit(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.INACTIVE, "Pool already active");
 
         poolStatus[poolId] = POOLSTATUS.DEPOSIT_ENABLED;
@@ -201,12 +222,12 @@ contract Pool is IPool, Owned, Pausable {
     /**
      * @notice Start a pool
      * @param poolId The pool id
-     * @dev Only the host or cohost can start the pool
+     * @dev Only the host can start the pool
      * @dev Pool status must be DEPOSIT_ENABLED
      * @dev Pool status will be changed to STARTED
      * @dev Emits PoolStatusChanged event
      */
-    function startPool(uint256 poolId) external onlyHostOrCohost(poolId) whenNotPaused {
+    function startPool(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED, "Deposit not enabled yet");
 
         poolStatus[poolId] = POOLSTATUS.STARTED;
@@ -217,36 +238,17 @@ contract Pool is IPool, Owned, Pausable {
     /**
      * @notice End a pool
      * @param poolId The pool id
-     * @dev Only the host or cohost can end the pool
+     * @dev Only the host can end the pool
      * @dev Pool status must be STARTED
      * @dev Pool status will be changed to ENDED
      * @dev Emits PoolStatusChanged event
      */
-    function endPool(uint256 poolId) external onlyHostOrCohost(poolId) whenNotPaused {
+    function endPool(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.STARTED, "Pool not started");
 
         poolStatus[poolId] = POOLSTATUS.ENDED;
         poolDetail[poolId].setTimeEnd(uint40(block.timestamp)); // update actual end time
         emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.ENDED);
-    }
-
-    /**
-     * @notice Refund a participant
-     * @param poolId The pool id
-     * @param participant The participant address
-     * @dev Only the host or cohost can refund a participant
-     * @dev Pool status must be STARTED
-     * @dev Participant must be a participant
-     * @dev Participant must not be refunded
-     * @dev Pool balance must be greater than 0
-     * @dev Emits Refund event
-     */
-    function refundParticipant(uint256 poolId, address participant) external onlyHostOrCohost(poolId) whenNotPaused {
-        require(isParticipant[participant][poolId], "Not a participant");
-        require(participantDetail[participant][poolId].isRefunded() == false, "Already refunded");
-        require(poolBalance[poolId].getBalance() > 0, "No balance");
-
-        _refund(poolId, participant);
     }
 
     /**
@@ -263,6 +265,58 @@ contract Pool is IPool, Owned, Pausable {
     }
 
     /**
+     * @notice Set winner of pool
+     * @param poolId The pool id
+     * @param winner The winner address
+     * @param amount The amount to set as winner
+     * @dev Only the host can set the winner
+     * @dev Winner must be a participant
+     * @dev Amount must be greater than or equal to pool balance
+     * @dev Emits WinnerSet event
+     */
+    function setWinner(uint256 poolId, address winner, uint256 amount) public onlyHost(poolId) whenNotPaused {
+        require(isParticipant[winner][poolId], "Not a participant");
+        require(amount <= poolBalance[poolId].getBalance(), "Not enough balance");
+
+        // Update pool balance
+        poolBalance[poolId].balance -= amount;
+
+        // Update winner details
+        winnerDetail[winner][poolId].setAmountWon(amount);
+        winners[poolId].push(winner);
+
+        emit EventsLib.WinnerSet(poolId, winner, amount);
+    }
+
+    /// @notice Set multiple winners of pool
+    function setWinners(uint256 poolId, address[] calldata _winners, uint256[] calldata amounts) external onlyHost(poolId) whenNotPaused {
+        require(_winners.length == amounts.length, "Invalid input");
+
+        for (uint256 i = 0; i < _winners.length; i++) {
+            setWinner(poolId, _winners[i], amounts[i]);
+        }
+    }
+
+    /**
+     * @notice Refund a participant
+     * @param poolId The pool id
+     * @param participant The participant address
+     * @dev Only the host can refund a participant
+     * @dev Pool status must be STARTED
+     * @dev Participant must be a participant
+     * @dev Participant must not be refunded
+     * @dev Pool balance must be greater than 0
+     * @dev Emits Refund event
+     */
+    function refundParticipant(uint256 poolId, address participant) external onlyHost(poolId) whenNotPaused {
+        require(isParticipant[participant][poolId], "Not a participant");
+        require(participantDetail[participant][poolId].hasRefunded() == false, "Already refunded");
+        require(poolBalance[poolId].getBalance() > 0, "No balance");
+
+        _refund(poolId, participant);
+    }
+
+    /**
      * @notice Collect fees
      * @param poolId The pool id
      * @dev Only send to host
@@ -274,71 +328,149 @@ contract Pool is IPool, Owned, Pausable {
         poolBalance[poolId].balance -= fees;
         poolBalance[poolId].feesCollected += fees;
 
-        bool success = poolToken[poolId].transfer(poolAdmin[poolId].getHost(), fees);
-        require(success, "Transfer failed");
+        address host = poolAdmin[poolId].getHost();
+        poolToken[poolId].safeTransfer(host, fees);
 
-        emit EventsLib.FeesCollected(poolId, poolAdmin[poolId].getHost(), fees);
+        emit EventsLib.FeesCollected(poolId, host, fees);
     }
 
     /**
-     * @notice Add a cohost
+     * @notice Collect remaining balance if any
      * @param poolId The pool id
-     * @param cohost The cohost address
-     * @dev Only the host can add a cohost
-     * @dev Co-host must not be the host
-     * @dev Co-host must not be a cohost
-     * @dev Emits CohostAdded event
+     * @dev Only send to host
+     * @dev Emits RemainingBalanceCollected event
      */
-    function addCohost(uint256 poolId, address cohost) external onlyHost(poolId) whenNotPaused {
-        require(!isCohost[cohost][poolId], "Cohost already exist");
-        require(cohost != poolAdmin[poolId].getHost(), "Host cannot be cohost");
+    function collectRemainingBalance(uint256 poolId) external onlyHost(poolId) whenNotPaused {
+        require(poolStatus[poolId] == POOLSTATUS.ENDED, "Pool not ended");
+        uint256 amount = poolBalance[poolId].getBalance();
+        require(amount > 0, "Nothing to withdraw");
 
-        PoolAdminLib.addCohost(poolAdmin, cohostIndex, isCohost, cohost, poolId);
+        poolBalance[poolId].balance = 0;
+        address host = poolAdmin[poolId].getHost();
+        poolToken[poolId].safeTransfer(host, amount);
 
-        emit EventsLib.CohostAdded(poolId, cohost);
-    }
-
-    /**
-     * @notice Remove a cohost
-     * @param poolId The pool id
-     * @param cohost The cohost address
-     * @dev Only the host can remove a cohost
-     * @dev Co-host must exist
-     * @dev Emits CohostRemoved event
-     */
-    function removeCohost(uint256 poolId, address cohost) external onlyHost(poolId) whenNotPaused {
-        require(isCohost[cohost][poolId], "Cohost does not exist");
-
-        PoolAdminLib.removeCohost(poolAdmin, cohostIndex, isCohost, cohost, poolId);
-        emit EventsLib.CohostRemoved(poolId, cohost);
+        emit EventsLib.RemainingBalanceCollected(poolId, host, amount);
     }
 
     // ----------------------------------------------------------------------------
     // View Functions
     // ----------------------------------------------------------------------------
 
+    /**
+     * @notice Get host of a pool
+     * @param poolId The pool id
+    */
     function getHost(uint256 poolId) external view returns (address) {
         return poolAdmin[poolId].getHost();
     }
 
+    /**
+     * @notice Get pool balance
+     * @param poolId The pool id
+     * @return balance The balance of the pool
+     */
+    function getPoolBalance(uint256 poolId) external view returns (uint256) {
+        return poolBalance[poolId].getBalance();
+    }
+
+    /** 
+     * @notice Get created pools by a host
+     * @param host The host address
+     * @return poolIds The pool ids created by the host
+     */
     function getPoolsCreatedBy(address host) external view returns (uint256[] memory) {
         return createdPools[host];
     }
 
+    /**
+     * @notice Get joined pools by a participant
+     * @param participant The participant address
+     * @return poolIds The pool ids joined by the participant
+     */
     function getPoolsJoinedBy(address participant) external view returns (uint256[] memory) {
         return joinedPools[participant];
     }
 
+    /**
+     * @notice Get participants list of a pool
+     * @param poolId The pool id
+     * @return participants The list of participants
+     */
     function getParticipants(uint256 poolId) external view returns (address[] memory) {
         return participants[poolId];
     }
 
+    /**
+     * @notice Get deposit amount of a participant
+     * @param participant The participant address
+     * @param poolId The pool id
+     * @return deposit The deposit amount of the participant
+     */
     function getParticipantDeposit(address participant, uint256 poolId) public view returns (uint256) {
         return ParticipantDetailLib.getDeposit(participantDetail, participant, poolId);
     }
 
+    /**
+     * @notice Check if a participant is a winner
+     * @param poolId The pool id
+     * @return isWinner True if participant is a winner
+     */
+    function isWinner(uint256 poolId, address winner) external view returns (bool) {
+        return winnerDetail[winner][poolId].getAmountWon() > 0;
+    }
+
+    /**
+     * @notice Get winning amount of a winner
+     * @param poolId The pool id
+     * @return amountWon The amount won by the winner
+     */
+    function getWinningAmount(uint256 poolId, address winner) external view returns (uint256) {
+        return winnerDetail[winner][poolId].getAmountWon();
+    }
+
+    /**
+     * @notice Get winners of a pool
+     * @param poolId The pool id
+     * @return winners The list of winners
+     */
+    function getWinners(uint256 poolId) external view returns (address[] memory) {
+        return winners[poolId];
+    }
+
+    /**
+     * @notice Get fees rate of late refund
+     * @param poolId The pool id
+     * @return penaltyFeeRate The penalty fee rate
+     */
     function getPoolFeeRate(uint256 poolId) public view returns (uint16) {
         return poolAdmin[poolId].getPenaltyFeeRate();
+    }
+
+    /**
+     * @notice Get fees accumulated
+     * @param poolId The pool id
+     * @return feesAccumulated The fees accumulated
+     */
+    function getFeesAccumulated(uint256 poolId) external view returns (uint256) {
+        return poolBalance[poolId].getFeesAccumulated();
+    }
+
+    /**
+     * @notice Get fees collected
+     * @param poolId The pool id
+     * @return feesAccumulated The fees collected
+     */
+    function getFeesCollected(uint256 poolId) external view returns (uint256) {
+        return poolBalance[poolId].getFeesCollected();
+    }
+
+    /**
+     * @notice Get extra balance if any sponsors / donations received
+     * @param poolId The pool id
+     * @return extraBalance The extra balance
+     */
+    function getExtraBalance(uint256 poolId) external view returns (uint256) {
+        return poolBalance[poolId].getExtraBalance();
     }
 
     // ----------------------------------------------------------------------------
@@ -354,8 +486,7 @@ contract Pool is IPool, Owned, Pausable {
     }
 
     function emergencyWithdraw(IERC20 token, uint256 amount) external onlyOwner whenPaused {
-        bool success = token.transfer(msg.sender, amount);
-        require(success, "Transfer failed");
+        token.safeTransfer(msg.sender, amount);
     }
 
     // ----------------------------------------------------------------------------
@@ -363,12 +494,9 @@ contract Pool is IPool, Owned, Pausable {
     // ----------------------------------------------------------------------------
 
     /**
-     * @notice Refund all participants
+     * @dev refund a participant
      * @param poolId The pool id
-     * @dev Only the host or cohost can refund all participants
-     * @dev Pool status must be STARTED
-     * @dev Pool balance must be greater than 0
-     * @dev Emits Refund event
+     * @param participant The participant address
      */
     function _refund(uint256 poolId, address participant) internal {
         uint256 amount = ParticipantDetailLib.getDeposit(participantDetail, participant, poolId)
@@ -390,8 +518,7 @@ contract Pool is IPool, Owned, Pausable {
         // Delete pool from participant
         ParticipantDetailLib.removeFromJoinedPool(participantDetail, joinedPools, participant, poolId);
 
-        bool success = poolToken[poolId].transfer(participant, amount);
-        require(success, "Transfer failed");
+        poolToken[poolId].safeTransfer(participant, amount);
 
         emit EventsLib.Refund(poolId, participant, amount);
     }
