@@ -22,6 +22,7 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract Pool is IPool, Owned, Pausable {
+    using UtilsLib for address;
     using SafeTransferLib for IERC20;
     using PoolAdminLib for IPool.PoolAdmin;
     using PoolDetailLib for IPool.PoolDetail;
@@ -180,7 +181,7 @@ contract Pool is IPool, Owned, Pausable {
     ) external whenNotPaused returns (uint256) {
         require(timeStart < timeEnd, "Invalid timing");
         require(penaltyFeeRate <= FEES_PRECISION, "Invalid fees rate");
-        require(UtilsLib.isContract(token), "Token not contract");
+        require(token.isContract(), "Token not contract");
 
         // Increment pool id
         latestPoolId++;
