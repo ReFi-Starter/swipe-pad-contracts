@@ -146,8 +146,10 @@ contract Pool is IPool, Ownable2Step, Pausable {
      */
     function selfRefund(uint256 poolId) external whenNotPaused {
         require(poolStatus[poolId] != POOLSTATUS.STARTED, "Pool started");
+        require(poolStatus[poolId] != POOLSTATUS.ENDED, "Pool ended");
         require(isParticipant[msg.sender][poolId], "Not a participant");
         require(!participantDetail[msg.sender][poolId].hasRefunded(), "Already refunded");
+        require(!winnerDetail[msg.sender][poolId].getAmountWon(), "Winner cannot refund");
 
         // Apply fees if pool is not deleted
         if (poolStatus[poolId] != POOLSTATUS.DELETED) {
@@ -276,6 +278,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
      * @dev Emits WinnerSet event
      */
     function setWinner(uint256 poolId, address winner, uint256 amount) public onlyHost(poolId) whenNotPaused {
+        require(poolStatus[poolId] != POOLSTATUS.DELETED, "Pool has deleted");
         require(isParticipant[winner][poolId], "Not a participant");
         require(amount <= poolBalance[poolId].getBalance(), "Not enough balance");
 
@@ -326,6 +329,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
     function collectFees(uint256 poolId) external whenNotPaused {
         // Transfer fees to host
         uint256 fees = poolBalance[poolId].getFeesAccumulated() - poolBalance[poolId].getFeesCollected();
+        require(fees != 0, "No fees to collect");
         poolBalance[poolId].balance -= fees;
         poolBalance[poolId].feesCollected += fees;
 
