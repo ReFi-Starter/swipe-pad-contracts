@@ -346,7 +346,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
      * @dev Emits RemainingBalanceCollected event
      */
     function collectRemainingBalance(uint256 poolId) external onlyHost(poolId) whenNotPaused {
-        require(poolStatus[poolId] == POOLSTATUS.ENDED, "Pool not ended");
+        require(poolStatus[poolId] == POOLSTATUS.ENDED || poolStatus[poolId] == POOLSTATUS.DELETED, "Pool not ended");
         uint256 amount = poolBalance[poolId].getBalance();
         require(amount > 0, "Nothing to withdraw");
 
