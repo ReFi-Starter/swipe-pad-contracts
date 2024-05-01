@@ -14,6 +14,12 @@ contract CoreTest is Test {
     uint256 public amountToDeposit;
     uint256 public poolId;
 
+    modifier turnOffGasMetering() {
+        vm.pauseGasMetering();
+        _;
+        vm.resumeGasMetering();
+    }
+
     function setUp() public {
         pool = new Pool();
         token = new Droplet();
@@ -359,12 +365,19 @@ contract CoreTest is Test {
         assertEq(token.balanceOf(address(pool)), amountToDeposit);
     }
 
+    function test_getAllPoolInfo() external {
+        helper_createPool();
+        helper_deposit();
+
+        // Use -vvvv to check returns
+        pool.getAllPoolInfo(poolId);
+    }
+
     // ----------------------------------------------------------------------------
     // Helper Functions
     // ----------------------------------------------------------------------------
 
-    function helper_createPool() private {
-        vm.pauseGasMetering();
+    function helper_createPool() private turnOffGasMetering {
         // Warp to random time
         vm.warp(1713935623);
 
@@ -381,18 +394,13 @@ contract CoreTest is Test {
             address(token)
         );
         pool.enableDeposit(poolId);
-
-        vm.resumeGasMetering();
     }
 
-    function helper_deposit() private {
-        vm.pauseGasMetering();
+    function helper_deposit() private turnOffGasMetering {
         // Deposit to the pool
         token.mint(alice, amountToDeposit);
         vm.startPrank(alice);
         token.approve(address(pool), amountToDeposit);
         pool.deposit(poolId, amountToDeposit);
-
-        vm.resumeGasMetering();
     }
 }

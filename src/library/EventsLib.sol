@@ -8,6 +8,7 @@ library EventsLib {
     event PoolStatusChanged(uint256 poolId, IPool.POOLSTATUS status);
     event Refund(uint256 poolId, address indexed participant, uint256 amount);
     event Deposit(uint256 poolId, address indexed participant, uint256 amount);
+    event ExtraDeposit(uint256 poolId, address indexed participant, uint256 amount);
     event FeesCollected(uint256 poolId, address indexed host, uint256 fees);
     event FeesCharged(uint256 poolId, address indexed participant, uint256 fees, bool chargedAll);
     event ParticipantRemoved(uint256 poolId, address indexed participant);

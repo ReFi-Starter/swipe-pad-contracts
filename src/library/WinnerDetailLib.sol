@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {IPool} from "../interface/IPool.sol";
-import {EventsLib} from "./EventsLib.sol";
 
 library WinnerDetailLib {
 	function setAmountWon(

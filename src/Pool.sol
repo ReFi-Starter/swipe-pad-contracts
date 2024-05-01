@@ -4,8 +4,9 @@ pragma solidity ^0.8.25;
 /// Interfaces
 import {IPool} from "./interface/IPool.sol";
 import {IERC20} from "./interface/IERC20.sol";
+
 /// Libraries
-import "./library/ConstantsLib.sol";
+import {FEES_PRECISION} from "./library/ConstantsLib.sol";
 import {EventsLib} from "./library/EventsLib.sol";
 import {ErrorsLib} from "./library/ErrorsLib.sol";
 import {PoolAdminLib} from "./library/PoolAdminLib.sol";
@@ -17,12 +18,11 @@ import {UtilsLib} from "./library/UtilsLib.sol";
 import {SafeTransferLib} from "./library/SafeTransferLib.sol";
 
 /// Dependencies
-import {Owned} from "solmate/auth/Owned.sol";
+import {Ownable2Step} from "./dependency/Ownable2Step.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract Pool is IPool, Owned, Pausable {
-    using UtilsLib for address;
+contract Pool is IPool, Ownable2Step, Pausable {
     using SafeTransferLib for IERC20;
     using PoolAdminLib for IPool.PoolAdmin;
     using PoolDetailLib for IPool.PoolDetail;
@@ -43,13 +43,13 @@ contract Pool is IPool, Owned, Pausable {
 
     /// @dev Pool admin specific mappings
     mapping(address => uint256[]) public createdPools;
-    mapping(address => mapping(uint256 => bool)) public isHost;
+    mapping(address => mapping(uint256 poolId => bool)) public isHost;
 
     /// @dev User specific mappings
     mapping(address => uint256[]) public joinedPools;
-    mapping(address => mapping(uint256 => bool)) public isParticipant;
-    mapping(address => mapping(uint256 => ParticipantDetail)) public participantDetail;
-    mapping(address => mapping(uint256 => WinnerDetail)) public winnerDetail;
+    mapping(address => mapping(uint256 poolId => bool)) public isParticipant;
+    mapping(address => mapping(uint256 poolId => ParticipantDetail)) public participantDetail;
+    mapping(address => mapping(uint256 poolId => WinnerDetail)) public winnerDetail;
 
     /// @notice Modifier to check if user is host
     modifier onlyHost(uint256 poolId) {
@@ -59,7 +59,7 @@ contract Pool is IPool, Owned, Pausable {
         _;
     }
 
-    constructor() Owned(msg.sender) {}
+    constructor() Ownable2Step(msg.sender) {}
 
     // ----------------------------------------------------------------------------
     // Participant Functions
@@ -77,8 +77,7 @@ contract Pool is IPool, Owned, Pausable {
      */
     function deposit(uint256 poolId, uint256 amount) external whenNotPaused returns (bool) {
         require(poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED, "Deposit not enabled");
-        require(block.timestamp <= poolDetail[poolId].getTimeStart(), "Pool started");
-        require(isParticipant[msg.sender][poolId] == false, "Already in pool");
+        require(!isParticipant[msg.sender][poolId], "Already in pool");
         uint256 amountPerPerson = poolDetail[poolId].getDepositAmountPerPerson();
         require(amount >= amountPerPerson, "Incorrect amount");
 
@@ -88,6 +87,7 @@ contract Pool is IPool, Owned, Pausable {
         // Excess as extra donation
         if (amount > amountPerPerson) {
             poolBalance[poolId].extraBalance += amount - amountPerPerson;
+            emit EventsLib.ExtraDeposit(poolId, msg.sender, amount - amountPerPerson);
         }
         // Update pool details
         poolBalance[poolId].totalDeposits += amount;
@@ -117,12 +117,12 @@ contract Pool is IPool, Owned, Pausable {
      * @dev Emits WinningClaimed event
      */
     function claimWinning(uint256 poolId, address winner) public whenNotPaused {
-        require(poolStatus[poolId] == POOLSTATUS.ENDED, "Pool not ended");
         require(!winnerDetail[winner][poolId].hasClaimed(), "Already claimed");
 
         uint256 amount = winnerDetail[winner][poolId].getAmountWon();
-        winnerDetail[winner][poolId].claimed = true;
+        require(amount > 0, "No winnings");
 
+        winnerDetail[winner][poolId].claimed = true;
         poolToken[poolId].safeTransfer(winner, amount);
 
         emit EventsLib.WinningClaimed(poolId, winner, amount);
@@ -131,7 +131,7 @@ contract Pool is IPool, Owned, Pausable {
     /// @notice Claim winnings from multiple pools
     function claimWinnings(uint256[] calldata poolIds, address[] calldata _winners) external whenNotPaused {
         require(poolIds.length == poolIds.length, "Invalid input");
-        for (uint256 i = 0; i < poolIds.length; i++) {
+        for (uint256 i; i < poolIds.length; i++) {
             claimWinning(poolIds[i], _winners[i]);
         }
     }
@@ -145,9 +145,9 @@ contract Pool is IPool, Owned, Pausable {
      * @dev Emits Refund event
      */
     function selfRefund(uint256 poolId) external whenNotPaused {
-        require(poolStatus[poolId] != POOLSTATUS.ENDED, "Pool already ended");
+        require(poolStatus[poolId] != POOLSTATUS.STARTED, "Pool started");
         require(isParticipant[msg.sender][poolId], "Not a participant");
-        require(participantDetail[msg.sender][poolId].hasRefunded() == false, "Already refunded");
+        require(!participantDetail[msg.sender][poolId].hasRefunded(), "Already refunded");
 
         // Apply fees if pool is not deleted
         if (poolStatus[poolId] != POOLSTATUS.DELETED) {
@@ -181,7 +181,7 @@ contract Pool is IPool, Owned, Pausable {
     ) external whenNotPaused returns (uint256) {
         require(timeStart < timeEnd, "Invalid timing");
         require(penaltyFeeRate <= FEES_PRECISION, "Invalid fees rate");
-        require(token.isContract(), "Token not contract");
+        require(UtilsLib.isContract(token), "Token not contract");
 
         // Increment pool id
         latestPoolId++;
@@ -206,7 +206,7 @@ contract Pool is IPool, Owned, Pausable {
     }
 
     /**
-     * @notice Enable deposit for a pool
+     * @notice Enable deposit for a pool, to prevent frontrunning deposit
      * @param poolId The pool id
      * @dev Only the host can enable deposit
      * @dev Pool status must be INACTIVE
@@ -221,7 +221,7 @@ contract Pool is IPool, Owned, Pausable {
     }
 
     /**
-     * @notice Start a pool
+     * @notice Start a pool, to prevent further deposits
      * @param poolId The pool id
      * @dev Only the host can start the pool
      * @dev Pool status must be DEPOSIT_ENABLED
@@ -293,7 +293,7 @@ contract Pool is IPool, Owned, Pausable {
     function setWinners(uint256 poolId, address[] calldata _winners, uint256[] calldata amounts) external onlyHost(poolId) whenNotPaused {
         require(_winners.length == amounts.length, "Invalid input");
 
-        for (uint256 i = 0; i < _winners.length; i++) {
+        for (uint256 i; i < _winners.length; i++) {
             setWinner(poolId, _winners[i], amounts[i]);
         }
     }
@@ -311,8 +311,8 @@ contract Pool is IPool, Owned, Pausable {
      */
     function refundParticipant(uint256 poolId, address participant) external onlyHost(poolId) whenNotPaused {
         require(isParticipant[participant][poolId], "Not a participant");
-        require(participantDetail[participant][poolId].hasRefunded() == false, "Already refunded");
-        require(poolBalance[poolId].getBalance() > 0, "No balance");
+        require(!participantDetail[participant][poolId].hasRefunded(), "Already refunded");
+        require(poolBalance[poolId].getBalance() > 0, "Pool has no balance");
 
         _refund(poolId, participant);
     }
@@ -474,6 +474,26 @@ contract Pool is IPool, Owned, Pausable {
         return poolBalance[poolId].getExtraBalance();
     }
 
+    function getAllPoolInfo(uint256 poolId) external view returns (
+        IPool.PoolAdmin memory _poolAdmin,
+        IPool.PoolDetail memory _poolDetail,
+        IPool.PoolBalance memory _poolBalance,
+        IPool.POOLSTATUS _poolStatus,
+        address _poolToken,
+        address[] memory _participants,
+        address[] memory _winners
+    ) {
+        return (
+            poolAdmin[poolId],
+            poolDetail[poolId],
+            poolBalance[poolId],
+            poolStatus[poolId],
+            address(poolToken[poolId]),
+            participants[poolId],
+            winners[poolId]
+        );
+    } 
+
     // ----------------------------------------------------------------------------
     // Admin Functions
     // ----------------------------------------------------------------------------
@@ -525,7 +545,7 @@ contract Pool is IPool, Owned, Pausable {
     }
 
     /**
-     * @notice Apply fees to a participant
+     * @notice Apply fees to a participant if event is < 24 hours to start
      * @param poolId The pool id
      */
     function _applyFees(uint256 poolId) internal {
