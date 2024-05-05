@@ -40,6 +40,9 @@ interface IPool {
 
     struct WinnerDetail {
         uint256 amountWon;
+        uint256 amountClaimed;
+        uint40 timeWon;
         bool claimed;
+        bool forfeited;
     }
 }

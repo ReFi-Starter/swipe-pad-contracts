@@ -8,6 +8,7 @@ library WinnerDetailLib {
 		IPool.WinnerDetail storage self,
 		uint256 amount
 	) internal {
+		self.timeWon = uint40(block.timestamp);
 		self.amountWon = amount;
 	}
 
@@ -17,7 +18,13 @@ library WinnerDetailLib {
 		return self.amountWon;
 	}
 
-	function hasClaimed(
+	function getTimeWon(
+		IPool.WinnerDetail storage self
+	) internal view returns (uint40) {
+		return self.timeWon;
+	}
+
+	function isClaimed(
 		IPool.WinnerDetail storage self
 	) internal view returns (bool) {
 		return self.claimed;

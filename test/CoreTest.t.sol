@@ -113,7 +113,7 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
-    function test_selfRefund_withFeesDeducted() public {
+    function test_selfRefund_withFeesSetByHostDeducted() public {
         helper_createPool();
         helper_deposit();
 
@@ -129,7 +129,7 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
-    function test_selfRefund_withAllFeesDeducted() external {
+    function test_selfRefund_with100PercentFeesDeducted() external {
         helper_createPool();
         helper_deposit();
 
@@ -204,7 +204,7 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
-    function test_setMultipleWinners_poolRemainingBalance() external {
+    function test_setMultipleWinners_poolRemainingBalanceShouldBeZero() external {
         helper_createPool();
         helper_deposit();
 
@@ -254,6 +254,21 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
+    function test_setWinner_beforeStartPool() external {
+        helper_createPool();
+        helper_deposit();
+            
+        uint256 winning = amountToDeposit;
+
+        // Should fail because pool is not started
+        vm.expectRevert();
+        pool.setWinner(
+            poolId, 
+            alice,
+            winning
+        );
+    }
+
     function test_claimWinnings() external {
         helper_createPool();
         helper_deposit();
@@ -275,7 +290,7 @@ contract CoreTest is Test {
 
     function test_collectFees() external {
         vm.pauseGasMetering();
-        test_selfRefund_withFeesDeducted();
+        test_selfRefund_withFeesSetByHostDeducted();
         vm.resumeGasMetering();
 
         // Get fees accumulated
@@ -371,6 +386,41 @@ contract CoreTest is Test {
 
         // Use -vvvv to check returns
         pool.getAllPoolInfo(poolId);
+    }
+
+    function test_refundParticipant() external {
+        helper_createPool();
+        helper_deposit();
+
+        vm.startPrank(host);
+        pool.startPool(poolId);
+        pool.endPool(poolId);
+
+        uint256 amountRefund = 25e18;
+        uint256 balanceBefore = token.balanceOf(alice);
+        pool.refundParticipant(poolId, alice, amountRefund);
+        uint256 balanceAfter = token.balanceOf(alice);
+
+        assertEq(balanceAfter - balanceBefore, amountRefund);
+    }
+
+    function test_forfeitWinnings() external {
+        helper_createPool();
+        helper_deposit();
+
+        uint256 winnings = 23e18;
+
+        vm.startPrank(host);
+        pool.startPool(poolId);
+        pool.endPool(poolId);
+        vm.warp(block.timestamp + 1 days);
+        pool.setWinner(poolId, alice, winnings);
+
+        pool.forfeitWinnings(poolId, alice);
+        uint256 res = token.balanceOf(alice);
+
+        assertEq(res, 0);
+        assert(pool.getWinningAmount(poolId, alice) == 0);
     }
 
     // ----------------------------------------------------------------------------

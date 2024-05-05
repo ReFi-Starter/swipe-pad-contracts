@@ -77,7 +77,7 @@ library ParticipantDetailLib {
         return self.joinedPoolsIndex;
     }
 
-    function hasRefunded(IPool.ParticipantDetail storage self) internal view returns (bool) {
+    function isRefunded(IPool.ParticipantDetail storage self) internal view returns (bool) {
         return self.refunded;
     }
 }

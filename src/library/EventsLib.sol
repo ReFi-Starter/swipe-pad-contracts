@@ -16,4 +16,7 @@ library EventsLib {
     event WinnerSet(uint256 poolId, address indexed winner, uint256 amount);
     event WinningClaimed(uint256 poolId, address indexed winner, uint256 amount);
     event RemainingBalanceCollected(uint256 poolId, address indexed host, uint256 amount);
+    event PoolStartTimeChanged(uint256 poolId, uint256 startTime);
+    event PoolEndTimeChanged(uint256 poolId, uint256 endTime);
+    event WinningForfeited(uint256 poolId, address indexed winner, uint256 amount);
 }
