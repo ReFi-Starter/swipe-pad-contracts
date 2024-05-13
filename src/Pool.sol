@@ -50,6 +50,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
     mapping(address => mapping(uint256 poolId => bool)) public isParticipant;
     mapping(address => mapping(uint256 poolId => ParticipantDetail)) public participantDetail;
     mapping(address => mapping(uint256 poolId => WinnerDetail)) public winnerDetail;
+    mapping(address => uint256[]) public claimablePools;
 
     /// @notice Modifier to check if user is host
     modifier onlyHost(uint256 poolId) {
@@ -268,6 +269,21 @@ contract Pool is IPool, Ownable2Step, Pausable {
     }
 
     /**
+     * @notice Re-enable deposit for a pool in case host wants to accept more deposit
+     * @param poolId The pool id
+     * @dev Only the host can re-enable deposit
+     * @dev Pool status must be STARTED
+     * @dev Pool status will be changed to DEPOSIT_ENABLED
+     * @dev Emits PoolStatusChanged event
+     */
+    function reenableDeposit(uint256 poolId) external onlyHost(poolId) whenNotPaused {
+        require(poolStatus[poolId] == POOLSTATUS.STARTED, "Pool not started");
+
+        poolStatus[poolId] = POOLSTATUS.DEPOSIT_ENABLED;
+        emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.DEPOSIT_ENABLED);
+    }
+
+    /**
      * @notice End a pool
      * @param poolId The pool id
      * @dev Only the host can end the pool
@@ -307,7 +323,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
      * @dev Emits WinnerSet event
      */
     function setWinner(uint256 poolId, address winner, uint256 amount) public onlyHost(poolId) whenNotPaused {
-        require(poolStatus[poolId] == POOLSTATUS.STARTED || poolStatus[poolId] == POOLSTATUS.ENDED, "Pool has not started");
+        require(poolStatus[poolId] != POOLSTATUS.INACTIVE && poolStatus[poolId] != POOLSTATUS.DELETED, "Pool status invalid");
         require(isParticipant[winner][poolId], "Not a participant");
         require(amount <= poolBalance[poolId].getBalance(), "Not enough balance");
 
@@ -317,6 +333,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
         // Update winner details
         winnerDetail[winner][poolId].setAmountWon(amount);
         winners[poolId].push(winner);
+        claimablePools[winner].push(poolId);
 
         emit EventsLib.WinnerSet(poolId, winner, amount);
     }
@@ -550,6 +567,15 @@ contract Pool is IPool, Ownable2Step, Pausable {
      */
     function getWinners(uint256 poolId) external view returns (address[] memory) {
         return winners[poolId];
+    }
+
+    /**
+     * @notice Get claimable pools by a winner
+     * @param winner The winner address
+     * @return poolIds The list of claimable pools
+     */
+    function getClaimablePools(address winner) external view returns (uint256[] memory) {
+        return claimablePools[winner];
     }
 
     // @dev Get everthing about a pool

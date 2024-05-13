@@ -423,6 +423,21 @@ contract CoreTest is Test {
         assert(pool.getWinningAmount(poolId, alice) == 0);
     }
 
+    function test_claimablePools() external {
+        helper_createPool();
+        helper_deposit();
+
+        uint256 winnings = 23e18;
+
+        vm.startPrank(host);
+        pool.startPool(poolId);
+        pool.endPool(poolId);
+        vm.warp(block.timestamp + 1 days);
+        pool.setWinner(poolId, alice, winnings);
+
+        assertEq(pool.getClaimablePools(alice)[0], pool.latestPoolId());
+    }
+
     // ----------------------------------------------------------------------------
     // Helper Functions
     // ----------------------------------------------------------------------------
