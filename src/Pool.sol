@@ -584,16 +584,17 @@ contract Pool is IPool, Ownable2Step, Pausable {
     }
 
     /**
-     * @notice Get winners details of a pool
+     * @notice Get winners details in array of structs of a pool
      * @param poolId The pool id
-     * @return winners The list of winners details
+     * @return winners The list of winners
+     * @return _winners The list of winners details
      */
-    function getWinnersDetails(uint256 poolId) external view returns (IPool.WinnerDetail[] memory) {
+    function getWinnersDetails(uint256 poolId) external view returns (address[] memory, IPool.WinnerDetail[] memory) {
         IPool.WinnerDetail[] memory _winners = new IPool.WinnerDetail[](winners[poolId].length);
         for (uint256 i; i < winners[poolId].length; i++) {
             _winners[i] = winnerDetail[winners[poolId][i]][poolId];
         }
-        return _winners;
+        return (winners[poolId], _winners);
     }
 
     // @dev Get everthing about a pool
