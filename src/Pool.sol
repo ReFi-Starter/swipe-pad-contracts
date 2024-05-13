@@ -570,12 +570,30 @@ contract Pool is IPool, Ownable2Step, Pausable {
     }
 
     /**
-     * @notice Get claimable pools by a winner
+     * @notice Get claimable pools of a winner
      * @param winner The winner address
-     * @return poolIds The list of claimable pools
+     * @return claimablePools The list of claimable pools
+     * @return isClaimed The list of claim status
      */
-    function getClaimablePools(address winner) external view returns (uint256[] memory) {
-        return claimablePools[winner];
+    function getClaimablePools(address winner) external view returns (uint256[] memory, bool[] memory) {
+        bool[] memory isClaimed = new bool[](claimablePools[winner].length);
+        for (uint256 i; i < claimablePools[winner].length; i++) {
+            isClaimed[i] = winnerDetail[winner][claimablePools[winner][i]].isClaimed();
+        }
+        return (claimablePools[winner], isClaimed);
+    }
+
+    /**
+     * @notice Get winners details of a pool
+     * @param poolId The pool id
+     * @return winners The list of winners details
+     */
+    function getWinnersDetails(uint256 poolId) external view returns (IPool.WinnerDetail[] memory) {
+        IPool.WinnerDetail[] memory _winners = new IPool.WinnerDetail[](winners[poolId].length);
+        for (uint256 i; i < winners[poolId].length; i++) {
+            _winners[i] = winnerDetail[winners[poolId][i]][poolId];
+        }
+        return _winners;
     }
 
     // @dev Get everthing about a pool

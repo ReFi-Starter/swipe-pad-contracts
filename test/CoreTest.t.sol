@@ -435,7 +435,10 @@ contract CoreTest is Test {
         vm.warp(block.timestamp + 1 days);
         pool.setWinner(poolId, alice, winnings);
 
-        assertEq(pool.getClaimablePools(alice)[0], pool.latestPoolId());
+        (uint256[] memory claimablePools, bool[] memory isClaimed) = pool.getClaimablePools(alice);
+
+        assertEq(claimablePools[0], pool.latestPoolId());
+        assertEq(isClaimed[0], false);
     }
 
     // ----------------------------------------------------------------------------
