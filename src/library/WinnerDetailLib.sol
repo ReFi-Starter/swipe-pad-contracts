@@ -4,12 +4,12 @@ pragma solidity ^0.8.0;
 import {IPool} from "../interface/IPool.sol";
 
 library WinnerDetailLib {
-	function setAmountWon(
+	function addAmountWon(
 		IPool.WinnerDetail storage self,
 		uint256 amount
 	) internal {
 		self.timeWon = uint40(block.timestamp);
-		self.amountWon = amount;
+		self.amountWon += amount;
 	}
 
 	function getAmountWon(

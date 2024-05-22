@@ -44,5 +44,6 @@ interface IPool {
         uint40 timeWon;
         bool claimed;
         bool forfeited;
+        bool alreadyInList; // check for skipping array.push operation
     }
 }

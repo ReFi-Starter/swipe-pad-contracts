@@ -331,10 +331,14 @@ contract Pool is IPool, Ownable2Step, Pausable {
         poolBalance[poolId].balance -= amount;
 
         // Update winner details
-        winnerDetail[winner][poolId].setAmountWon(amount);
-        winners[poolId].push(winner);
-        claimablePools[winner].push(poolId);
+        winnerDetail[winner][poolId].addAmountWon(amount);
 
+        // Prevent duplicate entry in winners array
+        if (!winnerDetail[winner][poolId].alreadyInList) {
+            winners[poolId].push(winner);
+            claimablePools[winner].push(poolId);
+            winnerDetail[winner][poolId].alreadyInList = true;
+        }
         emit EventsLib.WinnerSet(poolId, winner, amount);
     }
 
