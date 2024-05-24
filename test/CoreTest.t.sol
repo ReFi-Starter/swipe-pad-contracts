@@ -205,6 +205,23 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
+    function test_setSameWinnerMultipleTimes() external {
+        helper_createPool();
+        helper_deposit();
+
+        uint256 winnings = 23e18;
+
+        vm.startPrank(host);
+        pool.startPool(poolId);
+        pool.endPool(poolId);
+        pool.setWinner(poolId, alice, winnings);
+        pool.setWinner(poolId, alice, winnings);
+        uint256 res = pool.getWinningAmount(poolId, alice);
+
+        assertEq(res, winnings * 2);
+        vm.stopPrank();
+    }
+
     function test_setMultipleWinners_poolRemainingBalanceShouldBeZero() external {
         helper_createPool();
         helper_deposit();
