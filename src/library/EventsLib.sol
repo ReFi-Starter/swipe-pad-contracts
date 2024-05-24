@@ -19,4 +19,5 @@ library EventsLib {
     event PoolStartTimeChanged(uint256 poolId, uint256 startTime);
     event PoolEndTimeChanged(uint256 poolId, uint256 endTime);
     event WinningForfeited(uint256 poolId, address indexed winner, uint256 amount);
+    event PoolNameChanged(uint256 poolId, string poolName);
 }

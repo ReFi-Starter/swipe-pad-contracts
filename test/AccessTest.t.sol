@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
@@ -5,7 +6,7 @@ import {Pool} from "../src/Pool.sol";
 import {Droplet} from "../src/mock/MockERC20.sol";
 import "../src/library/ConstantsLib.sol";
 
-contract CoreTest is Test {
+contract AccessTest is Test {
     Pool public pool;
     Droplet public token;
     address public host;
@@ -16,6 +17,7 @@ contract CoreTest is Test {
         token = new Droplet();
         host = vm.addr(1);
         alice = vm.addr(2);
+		pool.grantRole(pool.WHITELISTED(), host);
         vm.warp(1713935623);
 
         // Create a pool

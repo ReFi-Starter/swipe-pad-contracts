@@ -21,8 +21,9 @@ import {SafeTransferLib} from "./library/SafeTransferLib.sol";
 import {Ownable2Step} from "./dependency/Ownable2Step.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract Pool is IPool, Ownable2Step, Pausable {
+contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     using SafeTransferLib for IERC20;
     using PoolAdminLib for IPool.PoolAdmin;
     using PoolDetailLib for IPool.PoolDetail;
@@ -31,6 +32,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
     using WinnerDetailLib for IPool.WinnerDetail;
 
     uint256 public latestPoolId; // Start from 1, 0 is invalid
+    bytes32 public constant WHITELISTED = keccak256("WHITELISTED");
 
     /// @dev Pool specific mappings
     mapping(uint256 => PoolAdmin) public poolAdmin;
@@ -60,7 +62,9 @@ contract Pool is IPool, Ownable2Step, Pausable {
         _;
     }
 
-    constructor() Ownable2Step(msg.sender) {}
+    constructor() Ownable2Step(msg.sender) {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
 
     // ----------------------------------------------------------------------------
     // Participant Functions
@@ -82,9 +86,6 @@ contract Pool is IPool, Ownable2Step, Pausable {
         uint256 amountPerPerson = poolDetail[poolId].getDepositAmountPerPerson();
         require(amount >= amountPerPerson, "Incorrect amount");
 
-        // Transfer tokens from user to pool
-        poolToken[poolId].safeTransferFrom(msg.sender, address(this), amount);
-
         // Excess as extra donation
         if (amount > amountPerPerson) {
             poolBalance[poolId].extraBalance += amount - amountPerPerson;
@@ -104,6 +105,9 @@ contract Pool is IPool, Ownable2Step, Pausable {
         if (participantDetail[msg.sender][poolId].isRefunded()) {
             participantDetail[msg.sender][poolId].refunded = false; // Edge case for rejoin
         }
+
+        // Transfer tokens from user to pool
+        poolToken[poolId].safeTransferFrom(msg.sender, address(this), amount);
 
         emit EventsLib.Deposit(poolId, msg.sender, amount);
         return true;
@@ -149,8 +153,8 @@ contract Pool is IPool, Ownable2Step, Pausable {
     function selfRefund(uint256 poolId) external whenNotPaused {
         require(poolStatus[poolId] != POOLSTATUS.STARTED, "Pool started");
         require(poolStatus[poolId] != POOLSTATUS.ENDED, "Pool ended");
-        require(isParticipant[msg.sender][poolId], "Not a participant");
         require(!participantDetail[msg.sender][poolId].isRefunded(), "Already refunded");
+        require(isParticipant[msg.sender][poolId], "Not a participant");
         require(winnerDetail[msg.sender][poolId].getAmountWon() == 0, "Winner cannot do refund");
 
         // Apply fees if pool is not deleted
@@ -165,7 +169,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
     // ----------------------------------------------------------------------------
 
     /**
-     * @notice Create a new pool
+     * @notice Create a new pool, current impletation allows only whitelisted address to create pool
      * @param timeStart The start time of the pool
      * @param timeEnd The end time of the pool
      * @param poolName The name of the pool
@@ -182,7 +186,7 @@ contract Pool is IPool, Ownable2Step, Pausable {
         uint256 depositAmountPerPerson, // Can be 0 in case of sponsored pool
         uint16 penaltyFeeRate, // 10000 = 100%
         address token
-    ) external whenNotPaused returns (uint256) {
+    ) external onlyRole(WHITELISTED) whenNotPaused returns (uint256) {
         require(timeStart < timeEnd, "Invalid timing");
         require(penaltyFeeRate <= FEES_PRECISION, "Invalid fees rate");
         require(UtilsLib.isContract(token), "Token not contract");
@@ -222,6 +226,18 @@ contract Pool is IPool, Ownable2Step, Pausable {
 
         poolStatus[poolId] = POOLSTATUS.DEPOSIT_ENABLED;
         emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.DEPOSIT_ENABLED);
+    }
+
+    /**
+     * @notice Change pool name
+     * @param poolId The pool id
+     * @param poolName The new name of the pool
+     * @dev Only the host can change pool name
+     * @dev Emits PoolNameChanged event
+     */
+    function changePoolName(uint256 poolId, string calldata poolName) external onlyHost(poolId) whenNotPaused {
+        poolDetail[poolId].setPoolName(poolName);
+        emit EventsLib.PoolNameChanged(poolId, poolName);
     }
 
     /**
@@ -362,8 +378,9 @@ contract Pool is IPool, Ownable2Step, Pausable {
      * @dev Emits Refund event
      */
     function refundParticipant(uint256 poolId, address participant, uint256 amount) external onlyHost(poolId) whenNotPaused {
-        require(isParticipant[participant][poolId], "Not a participant");
+        require(poolStatus[poolId] != POOLSTATUS.ENDED, "Pool already ended");
         require(participantDetail[participant][poolId].isRefunded() == false, "Already refunded");
+        require(isParticipant[participant][poolId], "Not a participant");
         require(poolBalance[poolId].getBalance() > 0, "Pool has no balance");
 
         _refund(poolId, participant, amount);

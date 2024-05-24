@@ -25,6 +25,7 @@ contract CoreTest is Test {
         token = new Droplet();
         host = vm.addr(1);
         alice = vm.addr(2);
+        pool.grantRole(pool.WHITELISTED(), host);
     }
 
     function test_createPool() public {
@@ -335,6 +336,12 @@ contract CoreTest is Test {
         vm.pauseGasMetering();
         address bob = vm.addr(3);
         token.mint(bob, amountToDeposit);
+
+        // Grant role for alice to create pool
+        vm.startPrank(address(this));
+        pool.grantRole(pool.WHITELISTED(), alice);
+
+        // Alice create pool
         vm.startPrank(alice);
         uint256 newPoolId = pool.createPool(
             uint40(block.timestamp), 
@@ -394,7 +401,6 @@ contract CoreTest is Test {
 
         vm.startPrank(host);
         pool.startPool(poolId);
-        pool.endPool(poolId);
 
         uint256 amountRefund = 25e18;
         uint256 balanceBefore = token.balanceOf(alice);
@@ -402,6 +408,19 @@ contract CoreTest is Test {
         uint256 balanceAfter = token.balanceOf(alice);
 
         assertEq(balanceAfter - balanceBefore, amountRefund);
+    }
+    
+    function test_refundParticipant_PoolEnded() external {
+        helper_createPool();
+        helper_deposit();
+
+        vm.startPrank(host);
+        pool.startPool(poolId);
+        pool.endPool(poolId);
+
+        uint256 amountRefund = 25e18;
+        vm.expectRevert();
+        pool.refundParticipant(poolId, alice, amountRefund);
     }
 
     function test_forfeitWinnings() external {
