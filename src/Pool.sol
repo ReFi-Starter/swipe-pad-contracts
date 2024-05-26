@@ -102,8 +102,12 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         joinedPools[msg.sender].push(poolId);
         isParticipant[msg.sender][poolId] = true;
         participantDetail[msg.sender][poolId].deposit = amountPerPerson;
-        if (participantDetail[msg.sender][poolId].isRefunded()) {
-            participantDetail[msg.sender][poolId].refunded = false; // Edge case for rejoin
+
+        // Edge case for rejoin
+        if (participantDetail[msg.sender][poolId].isRefunded() || winnerDetail[msg.sender][poolId].isClaimed()) {
+            participantDetail[msg.sender][poolId].refunded = false;
+            winnerDetail[msg.sender][poolId].claimed = false; 
+            emit EventsLib.ParticipantRejoined(poolId, msg.sender);
         }
 
         // Transfer tokens from user to pool
@@ -124,14 +128,14 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     function claimWinning(uint256 poolId, address winner) public whenNotPaused {
         require(!winnerDetail[winner][poolId].isClaimed(), "Already claimed");
 
-        uint256 amount = winnerDetail[winner][poolId].getAmountWon();
+        uint256 amount = winnerDetail[winner][poolId].getAmountWon() - winnerDetail[winner][poolId].getAmountClaimed();
         require(amount > 0, "No winnings");
 
         winnerDetail[winner][poolId].claimed = true;
-        winnerDetail[winner][poolId].amountClaimed = amount;
+        winnerDetail[winner][poolId].amountClaimed += amount;
         poolToken[poolId].safeTransfer(winner, amount);
 
-        emit EventsLib.WinningClaimed(poolId, winner, amount);
+        emit EventsLib.WinningsClaimed(poolId, winner, amount);
     }
 
     /// @notice Claim winnings from multiple pools
@@ -342,6 +346,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         require(poolStatus[poolId] != POOLSTATUS.INACTIVE && poolStatus[poolId] != POOLSTATUS.DELETED, "Pool status invalid");
         require(isParticipant[winner][poolId], "Not a participant");
         require(amount <= poolBalance[poolId].getBalance(), "Not enough balance");
+        require(!winnerDetail[winner][poolId].isClaimed(), "Already claimed");
 
         // Update pool balance
         poolBalance[poolId].balance -= amount;
@@ -378,7 +383,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
      * @dev Emits Refund event
      */
     function refundParticipant(uint256 poolId, address participant, uint256 amount) external onlyHost(poolId) whenNotPaused {
-        require(poolStatus[poolId] != POOLSTATUS.ENDED, "Pool already ended");
+        require(poolStatus[poolId] != POOLSTATUS.ENDED, "Pool is not ended");
         require(participantDetail[participant][poolId].isRefunded() == false, "Already refunded");
         require(isParticipant[participant][poolId], "Not a participant");
         require(poolBalance[poolId].getBalance() > 0, "Pool has no balance");
@@ -436,7 +441,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     function forfeitWinnings(uint256 poolId, address winner) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.ENDED, "Pool not ended");
         require(block.timestamp > poolDetail[poolId].getTimeEnd(), "Pool not ended");
-        require(winnerDetail[winner][poolId].isClaimed() == false, "Already claimed");
+        require(!winnerDetail[winner][poolId].isClaimed(), "Already claimed");
 
         uint256 amount = winnerDetail[winner][poolId].getAmountWon();
         require(amount > 0, "No winnings");
@@ -710,11 +715,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
 
             emit EventsLib.FeesCharged(poolId, msg.sender, fees, false);
         } else if (block.timestamp > timeStart) {
-            uint256 fees = getParticipantDeposit(msg.sender, poolId);
-            participantDetail[msg.sender][poolId].feesCharged += fees;
-            poolBalance[poolId].feesAccumulated += fees;
-
-            emit EventsLib.FeesCharged(poolId, msg.sender, fees, true);
+            revert ErrorsLib.EventStarted(block.timestamp, timeStart, msg.sender);
         }
     }
 }

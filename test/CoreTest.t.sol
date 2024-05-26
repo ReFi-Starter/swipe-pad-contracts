@@ -130,17 +130,14 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
-    function test_selfRefund_with100PercentFeesDeducted() external {
+    function test_selfRefund_afterEventStartTime() external {
         helper_createPool();
         helper_deposit();
 
         vm.startPrank(alice);
         vm.warp(block.timestamp + 10 days + 1); // After pool start time
+        vm.expectRevert();
         pool.selfRefund(poolId);
-        uint256 res = token.balanceOf(alice);
-
-        assertEq(res, 0);
-        vm.stopPrank();
     }
 
     function test_deposit_afterStartPool() external {
@@ -491,6 +488,16 @@ contract CoreTest is Test {
 
         (address[] memory winner, ) = pool.getWinnersDetails(1);
         assertEq(winner[0], alice);
+    }
+
+    function test_changePoolName() external {
+        helper_createPool();
+
+        vm.startPrank(host);
+        pool.changePoolName(poolId, "NewName");
+        string memory res = pool.getPoolDetail(poolId).poolName;
+
+        assertEq(res, "NewName");
     }
 
     // ----------------------------------------------------------------------------

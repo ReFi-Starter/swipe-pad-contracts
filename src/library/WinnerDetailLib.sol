@@ -18,6 +18,12 @@ library WinnerDetailLib {
 		return self.amountWon;
 	}
 
+	function getAmountClaimed(
+		IPool.WinnerDetail storage self
+	) internal view returns (uint256) {
+		return self.amountClaimed;
+	}
+
 	function getTimeWon(
 		IPool.WinnerDetail storage self
 	) internal view returns (uint40) {

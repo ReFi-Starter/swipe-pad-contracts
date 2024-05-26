@@ -14,10 +14,11 @@ library EventsLib {
     event ParticipantRemoved(uint256 poolId, address indexed participant);
     event JoinedPoolsRemoved(uint256 poolId, address indexed participant);
     event WinnerSet(uint256 poolId, address indexed winner, uint256 amount);
-    event WinningClaimed(uint256 poolId, address indexed winner, uint256 amount);
+    event WinningsClaimed(uint256 poolId, address indexed winner, uint256 amount);
     event RemainingBalanceCollected(uint256 poolId, address indexed host, uint256 amount);
     event PoolStartTimeChanged(uint256 poolId, uint256 startTime);
     event PoolEndTimeChanged(uint256 poolId, uint256 endTime);
     event WinningForfeited(uint256 poolId, address indexed winner, uint256 amount);
     event PoolNameChanged(uint256 poolId, string poolName);
+    event ParticipantRejoined(uint256 poolId, address indexed participant);
 }

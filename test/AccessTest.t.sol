@@ -49,6 +49,39 @@ contract AccessTest is Test {
 		vm.stopPrank();
 	}
 
+	function test_pause_tryCreatePool() external {
+		vm.startPrank(address(this));
+		pool.pause();
+		pool.grantRole(pool.WHITELISTED(), address(this));
+
+		vm.expectRevert();
+		pool.createPool(
+            uint40(block.timestamp + 10 days),
+            uint40(block.timestamp + 11 days),
+            "PoolParty",
+            100e18,
+            3000,
+            address(token)
+        );
+		vm.stopPrank();
+	}
+
+	function test_pause_tryDeposit() external {
+		vm.startPrank(address(this));
+		pool.pause();
+		pool.grantRole(pool.WHITELISTED(), address(this));
+
+		uint256 amount = 100e18;
+		address bob = vm.addr(0xB0B);
+        token.mint(bob, amount);
+        vm.startPrank(bob);
+        token.approve(address(pool), amount);
+
+		vm.expectRevert();
+		pool.deposit(1, amount);
+		vm.stopPrank();
+	}
+
 	function test_pause_nonAdmin() external {
 		vm.startPrank(host);
 		vm.expectRevert();
