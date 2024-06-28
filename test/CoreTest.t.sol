@@ -80,7 +80,11 @@ contract CoreTest is Test {
         helper_createPool();
 
         // Reset enableDeposit to false
-        vm.store(address(pool), 0x3e5fec24aa4dc4e5aee2e025e51e1392c72a2500577559fae9665c6d52bd6a31, 0);
+        vm.store(
+            address(pool),
+            0x3e5fec24aa4dc4e5aee2e025e51e1392c72a2500577559fae9665c6d52bd6a31,
+            0
+        );
 
         // Try reset success
         token.mint(alice, amountToDeposit);
@@ -125,7 +129,9 @@ contract CoreTest is Test {
         pool.selfRefund(poolId);
         uint256 res = token.balanceOf(alice);
 
-        uint256 expected = amountDeposited - (amountDeposited * pool.getPoolFeeRate(poolId)) / FEES_PRECISION;
+        uint256 expected = amountDeposited -
+            (amountDeposited * pool.getPoolFeeRate(poolId)) /
+            FEES_PRECISION;
         assertEq(res, expected);
         vm.stopPrank();
     }
@@ -219,7 +225,9 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
-    function test_setMultipleWinners_poolRemainingBalanceShouldBeZero() external {
+    function test_setMultipleWinners_poolRemainingBalanceShouldBeZero()
+        external
+    {
         helper_createPool();
         helper_deposit();
 
@@ -238,11 +246,7 @@ contract CoreTest is Test {
         vm.startPrank(host);
         pool.startPool(poolId);
         pool.endPool(poolId);
-        pool.setWinners(
-            poolId, 
-            winners,
-            winnings
-        );
+        pool.setWinners(poolId, winners, winnings);
         uint256 res = pool.getPoolBalance(poolId);
 
         // Remaining balance should be 0
@@ -261,27 +265,19 @@ contract CoreTest is Test {
 
         // Should fail because participant has not deposited
         vm.expectRevert();
-        pool.setWinner(
-            poolId, 
-            vm.addr(0xBEEF),
-            winning
-        );
+        pool.setWinner(poolId, vm.addr(0xBEEF), winning);
         vm.stopPrank();
     }
 
     function test_setWinner_beforeStartPool() external {
         helper_createPool();
         helper_deposit();
-            
+
         uint256 winning = amountToDeposit;
 
         // Should fail because pool is not started
         vm.expectRevert();
-        pool.setWinner(
-            poolId, 
-            alice,
-            winning
-        );
+        pool.setWinner(poolId, alice, winning);
     }
 
     function test_claimWinnings() external {
@@ -320,7 +316,10 @@ contract CoreTest is Test {
         uint256 poolBalanceAfter = pool.getPoolBalance(poolId);
 
         assertEq(balanceAfter - balanceBefore, fees);
-        assertEq(pool.getFeesAccumulated(poolId) - pool.getFeesCollected(poolId), 0);
+        assertEq(
+            pool.getFeesAccumulated(poolId) - pool.getFeesCollected(poolId),
+            0
+        );
         assertEq(poolBalanceBefore - poolBalanceAfter, fees);
     }
 
@@ -358,11 +357,11 @@ contract CoreTest is Test {
         // Alice create pool
         vm.startPrank(alice);
         uint256 newPoolId = pool.createPool(
-            uint40(block.timestamp), 
-            uint40(block.timestamp + 10 days), 
-            "New", 
-            amountToDeposit, 
-            0, 
+            uint40(block.timestamp),
+            uint40(block.timestamp + 10 days),
+            "New",
+            amountToDeposit,
+            0,
             address(token)
         );
         pool.enableDeposit(newPoolId);
@@ -392,7 +391,8 @@ contract CoreTest is Test {
         // PoolId balance should be 0
         assertEq(pool.getPoolBalance(poolId), 0);
         // Try collectFees after 0 balance since there's fees accumulated
-        uint256 fees = pool.getFeesAccumulated(poolId) - pool.getFeesCollected(poolId);
+        uint256 fees = pool.getFeesAccumulated(poolId) -
+            pool.getFeesCollected(poolId);
         assert(fees > 0);
         vm.expectRevert();
         pool.collectFees(poolId);
@@ -423,7 +423,7 @@ contract CoreTest is Test {
 
         assertEq(balanceAfter - balanceBefore, amountRefund);
     }
-    
+
     function test_refundParticipant_PoolEnded() external {
         helper_createPool();
         helper_deposit();
@@ -448,12 +448,30 @@ contract CoreTest is Test {
         pool.endPool(poolId);
         vm.warp(block.timestamp + 1 days);
         pool.setWinner(poolId, alice, winnings);
+        Pool.PoolDetail memory detail = pool.getPoolDetail(poolId);
+        vm.warp(block.timestamp + 3 days + 23 hours + 60 minutes + 1 seconds);
 
         pool.forfeitWinnings(poolId, alice);
         uint256 res = token.balanceOf(alice);
 
         assertEq(res, 0);
         assert(pool.getWinningAmount(poolId, alice) == 0);
+    }
+
+    function test_forfeitWinnings_shouldFailInTimelock() external {
+        helper_createPool();
+        helper_deposit();
+
+        uint256 winnings = 23e18;
+
+        vm.startPrank(host);
+        pool.startPool(poolId);
+        pool.endPool(poolId);
+        vm.warp(block.timestamp + 1 days);
+        pool.setWinner(poolId, alice, winnings);
+
+        vm.expectRevert("Still in timelock");
+        pool.forfeitWinnings(poolId, alice);
     }
 
     function test_getClaimablePools() external {
@@ -468,7 +486,8 @@ contract CoreTest is Test {
         vm.warp(block.timestamp + 1 days);
         pool.setWinner(poolId, alice, winnings);
 
-        (uint256[] memory claimablePools, bool[] memory isClaimed) = pool.getClaimablePools(alice);
+        (uint256[] memory claimablePools, bool[] memory isClaimed) = pool
+            .getClaimablePools(alice);
 
         assertEq(claimablePools[0], pool.latestPoolId());
         assertEq(isClaimed[0], false);

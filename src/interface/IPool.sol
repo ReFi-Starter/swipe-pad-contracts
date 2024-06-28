@@ -76,8 +76,11 @@ interface IPool {
     function claimWinning(uint256 poolId, address winner) external;
 
     /// @notice Claim winnings from multiple pools
-    function claimWinnings(uint256[] calldata poolIds, address[] calldata _winners) external;
-    
+    function claimWinnings(
+        uint256[] calldata poolIds,
+        address[] calldata _winners
+    ) external;
+
     /**
      * @notice Self refund from a pool
      * @param poolId The pool id
@@ -192,7 +195,11 @@ interface IPool {
     function setWinner(uint256 poolId, address winner, uint256 amount) external;
 
     /// @notice Set multiple winners of pool
-    function setWinners(uint256 poolId, address[] calldata _winners, uint256[] calldata amounts) external;
+    function setWinners(
+        uint256 poolId,
+        address[] calldata _winners,
+        uint256[] calldata amounts
+    ) external;
 
     /**
      * @notice Refund a participant
@@ -204,7 +211,11 @@ interface IPool {
      * @dev Pool balance must be greater than 0
      * @dev Emits Refund event
      */
-    function refundParticipant(uint256 poolId, address participant, uint256 amount) external;
+    function refundParticipant(
+        uint256 poolId,
+        address participant,
+        uint256 amount
+    ) external;
 
     /**
      * @notice Collect fees
@@ -223,7 +234,7 @@ interface IPool {
     function collectRemainingBalance(uint256 poolId) external;
 
     /**
-     * @notice Forfeit winnings of a winner back to pool, 
+     * @notice Forfeit winnings of a winner back to pool,
      *          used when winner not claim for long time
      * @param poolId The pool id
      * @param winner The winner address
@@ -241,7 +252,7 @@ interface IPool {
     /**
      * @notice Get host of a pool
      * @param poolId The pool id
-    */
+     */
     function getHost(uint256 poolId) external view returns (address);
 
     /**
@@ -256,7 +267,9 @@ interface IPool {
      * @param poolId The pool id
      * @return poolDetail The pool details
      */
-    function getPoolDetail(uint256 poolId) external view returns (IPool.PoolDetail memory);
+    function getPoolDetail(
+        uint256 poolId
+    ) external view returns (IPool.PoolDetail memory);
 
     /**
      * @notice Get pool balance
@@ -292,7 +305,10 @@ interface IPool {
      * @param poolId The pool id
      * @return deposit The deposit of the participant
      */
-    function getParticipantDeposit(address participant, uint256 poolId) external view returns (uint256);
+    function getParticipantDeposit(
+        address participant,
+        uint256 poolId
+    ) external view returns (uint256);
 
     /**
      * @notice Get details of a participant in a pool
@@ -300,7 +316,10 @@ interface IPool {
      * @param poolId The pool id
      * @return participantDetail The participant details
      */
-    function getParticipantDetail(address participant, uint256 poolId) external view returns (IPool.ParticipantDetail memory);
+    function getParticipantDetail(
+        address participant,
+        uint256 poolId
+    ) external view returns (IPool.ParticipantDetail memory);
 
     /**
      * @notice Get amount won by a winner in a pool
@@ -308,7 +327,10 @@ interface IPool {
      * @param winner The winner address
      * @return amountWon The amount won by the winner
      */
-    function getWinningAmount(uint256 poolId, address winner) external view returns (uint256);
+    function getWinningAmount(
+        uint256 poolId,
+        address winner
+    ) external view returns (uint256);
 
     /**
      * @notice Get details of a winner in a pool
@@ -316,35 +338,46 @@ interface IPool {
      * @param winner The winner address
      * @return winnerDetail The winner details
      */
-    function getWinnerDetail(uint256 poolId, address winner) external view returns (IPool.WinnerDetail memory);
+    function getWinnerDetail(
+        uint256 poolId,
+        address winner
+    ) external view returns (IPool.WinnerDetail memory);
 
-    /** 
+    /**
      * @notice Get created pools by a host
      * @param host The host address
      * @return poolIds The pool ids created by the host
      */
-    function getPoolsCreatedBy(address host) external view returns (uint256[] memory);
+    function getPoolsCreatedBy(
+        address host
+    ) external view returns (uint256[] memory);
 
     /**
      * @notice Get joined pools by a participant
      * @param participant The participant address
      * @return poolIds The pool ids joined by the participant
      */
-    function getPoolsJoinedBy(address participant) external view returns (uint256[] memory);
+    function getPoolsJoinedBy(
+        address participant
+    ) external view returns (uint256[] memory);
 
     /**
      * @notice Get participants list of a pool
      * @param poolId The pool id
      * @return participants The list of participants
      */
-    function getParticipants(uint256 poolId) external view returns (address[] memory);
+    function getParticipants(
+        uint256 poolId
+    ) external view returns (address[] memory);
 
     /**
      * @notice Get winners of a pool
      * @param poolId The pool id
      * @return winners The list of winners
      */
-    function getWinners(uint256 poolId) external view returns (address[] memory);
+    function getWinners(
+        uint256 poolId
+    ) external view returns (address[] memory);
 
     /**
      * @notice Get claimable pools of a winner
@@ -352,7 +385,9 @@ interface IPool {
      * @return claimablePools The list of claimable pools
      * @return isClaimed The list of claim status
      */
-    function getClaimablePools(address winner) external view returns (uint256[] memory, bool[] memory);
+    function getClaimablePools(
+        address winner
+    ) external view returns (uint256[] memory, bool[] memory);
 
     /**
      * @notice Get winners details in array of structs of a pool
@@ -360,18 +395,25 @@ interface IPool {
      * @return winners The list of winners
      * @return _winners The list of winners details
      */
-    function getWinnersDetails(uint256 poolId) external view returns (address[] memory, IPool.WinnerDetail[] memory);
+    function getWinnersDetails(
+        uint256 poolId
+    ) external view returns (address[] memory, IPool.WinnerDetail[] memory);
 
     // @dev Get everthing about a pool
-    function getAllPoolInfo(uint256 poolId) external view returns (
-        IPool.PoolAdmin memory _poolAdmin,
-        IPool.PoolDetail memory _poolDetail,
-        IPool.PoolBalance memory _poolBalance,
-        IPool.POOLSTATUS _poolStatus,
-        address _poolToken,
-        address[] memory _participants,
-        address[] memory _winners
-    );
+    function getAllPoolInfo(
+        uint256 poolId
+    )
+        external
+        view
+        returns (
+            IPool.PoolAdmin memory _poolAdmin,
+            IPool.PoolDetail memory _poolDetail,
+            IPool.PoolBalance memory _poolBalance,
+            IPool.POOLSTATUS _poolStatus,
+            address _poolToken,
+            address[] memory _participants,
+            address[] memory _winners
+        );
 
     // ----------------------------------------------------------------------------
     // Admin Functions
