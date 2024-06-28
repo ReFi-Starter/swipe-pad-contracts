@@ -34,7 +34,7 @@ contract PoolScript is Script {
         if (token.balanceOf(signer) == 0) {
             token.mint(signer, 1000e18);
         }
-        pool.grantRole(pool.WHITELISTED(), signer);
+        pool.grantRole(pool.WHITELISTED_HOST(), signer);
         uint256 poolId = pool.createPool(
             uint40(block.timestamp + 2 days), 
             uint40(block.timestamp + 2 days + 6 hours), 

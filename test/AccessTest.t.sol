@@ -17,7 +17,7 @@ contract AccessTest is Test {
         token = new Droplet();
         host = vm.addr(1);
         alice = vm.addr(2);
-		pool.grantRole(pool.WHITELISTED(), host);
+		pool.grantRole(pool.WHITELISTED_HOST(), host);
         vm.warp(1713935623);
 
         // Create a pool
@@ -52,7 +52,7 @@ contract AccessTest is Test {
 	function test_pause_tryCreatePool() external {
 		vm.startPrank(address(this));
 		pool.pause();
-		pool.grantRole(pool.WHITELISTED(), address(this));
+		pool.grantRole(pool.WHITELISTED_HOST(), address(this));
 
 		vm.expectRevert();
 		pool.createPool(
@@ -69,7 +69,7 @@ contract AccessTest is Test {
 	function test_pause_tryDeposit() external {
 		vm.startPrank(address(this));
 		pool.pause();
-		pool.grantRole(pool.WHITELISTED(), address(this));
+		pool.grantRole(pool.WHITELISTED_HOST(), address(this));
 
 		uint256 amount = 100e18;
 		address bob = vm.addr(0xB0B);

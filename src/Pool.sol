@@ -34,7 +34,9 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     using SponsorDetailLib for IPool.SponsorDetail;
 
     uint256 public latestPoolId; // Start from 1, 0 is invalid
-    bytes32 public constant WHITELISTED = keccak256("WHITELISTED");
+    bytes32 public constant WHITELISTED_HOST = keccak256("WHITELISTED_HOST");
+    bytes32 public constant WHITELISTED_SPONSOR =
+        keccak256("WHITELISTED_SPONSOR");
 
     /// @dev Pool specific mappings
     mapping(uint256 => PoolAdmin) public poolAdmin;
@@ -218,7 +220,11 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
      * @dev Amount must be greater than 0
      * @dev Emits Sponsorship event
      */
-    function sponsor(string calldata name, uint256 poolId, uint256 amount) external whenNotPaused {
+    function sponsor(
+        string calldata name,
+        uint256 poolId,
+        uint256 amount
+    ) external onlyRole(WHITELISTED_SPONSOR) whenNotPaused {
         require(
             poolStatus[poolId] == POOLSTATUS.INACTIVE ||
                 poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED,
@@ -268,7 +274,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         uint256 depositAmountPerPerson, // Can be 0 in case of sponsored pool
         uint16 penaltyFeeRate, // 10000 = 100%
         address token
-    ) external onlyRole(WHITELISTED) whenNotPaused returns (uint256) {
+    ) external onlyRole(WHITELISTED_HOST) whenNotPaused returns (uint256) {
         require(timeStart < timeEnd, "Invalid timing");
         require(penaltyFeeRate <= FEES_PRECISION, "Invalid fees rate");
         require(UtilsLib.isContract(token), "Token not contract");
@@ -620,20 +626,22 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
      * @notice Get sponsors of a pool
      * @param poolId The pool id
      */
-    function getSponsors(uint256 poolId) external view returns (address[] memory) {
+    function getSponsors(
+        uint256 poolId
+    ) external view returns (address[] memory) {
         return sponsors[poolId];
     }
 
     /**
      * @notice Get sponsor details of a pool
      * @param poolId The pool id
-     * @param sponsor The sponsor address
+     * @param _sponsor The sponsor address
      */
     function getSponsorDetail(
         uint256 poolId,
-        address sponsor
+        address _sponsor
     ) external view returns (IPool.SponsorDetail memory) {
-        return sponsorDetail[sponsor][poolId];
+        return sponsorDetail[_sponsor][poolId];
     }
 
     /**
@@ -670,7 +678,9 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
      * @param poolId The pool id
      * @return sponsorshipAmount The sponsored balance of the pool
      */
-    function getSponsorshipAmount(uint256 poolId) external view returns (uint256) {
+    function getSponsorshipAmount(
+        uint256 poolId
+    ) external view returns (uint256) {
         return poolBalance[poolId].getSponsorshipAmount();
     }
 

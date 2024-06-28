@@ -28,7 +28,7 @@ contract CoreTest is Test {
         host = vm.addr(1);
         alice = vm.addr(2);
         bob = vm.addr(3);
-        pool.grantRole(pool.WHITELISTED(), host);
+        pool.grantRole(pool.WHITELISTED_HOST(), host);
     }
 
     function test_createPool() public {
@@ -498,6 +498,8 @@ contract CoreTest is Test {
 
         uint256 amount = 23e18;
 
+        vm.startPrank(address(this));
+        pool.grantRole(pool.WHITELISTED_SPONSOR(), alice);
         vm.startPrank(alice);
         token.mint(alice, amount);
         token.approve(address(pool), amount);
@@ -507,10 +509,25 @@ contract CoreTest is Test {
         assertEq(res, amount);
     }
 
+    function test_sponsor_withoutRole() external {
+        helper_createPool();
+
+        uint256 amount = 23e18;
+
+        vm.startPrank(alice);
+        token.mint(alice, amount);
+        token.approve(address(pool), amount);
+
+        vm.expectRevert();
+        pool.sponsor("projectA", poolId, amount);
+    }
+
     function test_sponsor_withoutCreatingPool() external {
         poolId = 1;
         uint256 amount = 23e18;
 
+        vm.startPrank(address(this));
+        pool.grantRole(pool.WHITELISTED_SPONSOR(), alice);
         vm.startPrank(alice);
         token.mint(alice, amount);
         token.approve(address(pool), amount);
@@ -546,7 +563,7 @@ contract CoreTest is Test {
         // Create a second pool
         // Grant role for alice to create pool
         vm.startPrank(address(this));
-        pool.grantRole(pool.WHITELISTED(), alice);
+        pool.grantRole(pool.WHITELISTED_HOST(), alice);
 
         // Alice create pool
         vm.startPrank(alice);
