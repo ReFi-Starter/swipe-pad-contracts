@@ -20,7 +20,7 @@ library PoolBalanceLib {
         return self.feesCollected;
     }
 
-    function getExtraBalance(IPool.PoolBalance storage self) internal view returns (uint256) {
-        return self.extraBalance;
+    function getSponsorshipAmount(IPool.PoolBalance storage self) internal view returns (uint256) {
+        return self.sponsored;
     }
 }

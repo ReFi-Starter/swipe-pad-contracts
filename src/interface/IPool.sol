@@ -29,7 +29,7 @@ interface IPool {
         uint256 feesAccumulated;
         uint256 feesCollected;
         uint256 balance; // real current balance of pool
-        uint256 extraBalance; // donations made by participants
+        uint256 sponsored; // extra balance from sponsor or participants
     }
 
     struct ParticipantDetail {
@@ -47,6 +47,11 @@ interface IPool {
         bool claimed;
         bool forfeited;
         bool alreadyInList; // check for skipping array.push operation
+    }
+
+    struct SponsorDetail {
+        string name;
+        uint256 amount;
     }
 
     // ----------------------------------------------------------------------------
@@ -279,11 +284,11 @@ interface IPool {
     function getPoolBalance(uint256 poolId) external view returns (uint256);
 
     /**
-     * @notice Get extra balance of a pool
+     * @notice Get sponsored balance of a pool
      * @param poolId The pool id
-     * @return extraBalance The extra balance of the pool
+     * @return sponsorshipAmount The sponsored balance of the pool
      */
-    function getExtraBalance(uint256 poolId) external view returns (uint256);
+    function getSponsorshipAmount(uint256 poolId) external view returns (uint256);
 
     /**
      * @notice Get fees accumulated in a pool

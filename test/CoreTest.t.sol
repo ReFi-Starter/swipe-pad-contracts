@@ -189,7 +189,7 @@ contract CoreTest is Test {
         vm.startPrank(alice);
         token.approve(address(pool), greaterAmount);
         pool.deposit(poolId, greaterAmount);
-        uint256 extra = pool.getExtraBalance(poolId);
+        uint256 extra = pool.getSponsorshipAmount(poolId);
         // Extra balance should be 10000e18
         assertEq(extra, 10000e18);
         vm.stopPrank();
@@ -491,6 +491,32 @@ contract CoreTest is Test {
         string memory res = pool.getPoolDetail(poolId).poolName;
 
         assertEq(res, "NewName");
+    }
+
+    function test_sponsor() external {
+        helper_createPool();
+
+        uint256 amount = 23e18;
+
+        vm.startPrank(alice);
+        token.mint(alice, amount);
+        token.approve(address(pool), amount);
+        pool.sponsor("projectA", poolId, amount);
+        uint256 res = pool.getSponsorshipAmount(poolId);
+
+        assertEq(res, amount);
+    }
+
+    function test_sponsor_withoutCreatingPool() external {
+        poolId = 1;
+        uint256 amount = 23e18;
+
+        vm.startPrank(alice);
+        token.mint(alice, amount);
+        token.approve(address(pool), amount);
+        
+        vm.expectRevert();
+        pool.sponsor("projectA", poolId, amount);
     }
 
     // ----------------------------------------------------------------------------

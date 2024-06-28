@@ -22,4 +22,5 @@ library EventsLib {
     event WinningForfeited(uint256 poolId, address indexed winner, uint256 amount);
     event PoolNameChanged(uint256 poolId, string poolName);
     event ParticipantRejoined(uint256 poolId, address indexed participant);
+    event SponsorshipAdded(uint256 poolId, address indexed sponsor, uint256 amount);
 }

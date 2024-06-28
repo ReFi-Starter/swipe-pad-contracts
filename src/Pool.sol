@@ -16,6 +16,7 @@ import {ParticipantDetailLib} from "./library/ParticipantDetailLib.sol";
 import {WinnerDetailLib} from "./library/WinnerDetailLib.sol";
 import {UtilsLib} from "./library/UtilsLib.sol";
 import {SafeTransferLib} from "./library/SafeTransferLib.sol";
+import {SponsorDetailLib} from "./library/SponsorDetailLib.sol";
 
 /// Dependencies
 import {Ownable2Step} from "./dependency/Ownable2Step.sol";
@@ -30,6 +31,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     using PoolBalanceLib for IPool.PoolBalance;
     using ParticipantDetailLib for IPool.ParticipantDetail;
     using WinnerDetailLib for IPool.WinnerDetail;
+    using SponsorDetailLib for IPool.SponsorDetail;
 
     uint256 public latestPoolId; // Start from 1, 0 is invalid
     bytes32 public constant WHITELISTED = keccak256("WHITELISTED");
@@ -55,6 +57,11 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     mapping(address => mapping(uint256 poolId => WinnerDetail))
         public winnerDetail;
     mapping(address => uint256[]) public claimablePools;
+
+    /// @dev Sponsor specific mappings
+    mapping(address => mapping(uint256 poolId => SponsorDetail))
+        public sponsorDetail;
+    mapping(uint256 => address[]) public sponsors;
 
     /// @notice Modifier to check if user is host
     modifier onlyHost(uint256 poolId) {
@@ -97,7 +104,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
 
         // Excess as extra donation
         if (amount > amountPerPerson) {
-            poolBalance[poolId].extraBalance += amount - amountPerPerson;
+            poolBalance[poolId].sponsored += amount - amountPerPerson;
             emit EventsLib.ExtraDeposit(
                 poolId,
                 msg.sender,
@@ -196,6 +203,47 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
             _applyFees(poolId);
         }
         _refund(poolId, msg.sender, 0); // 0 means use default deposit amount after fees
+    }
+
+    // ----------------------------------------------------------------------------
+    // Sponsor Functions
+    // ----------------------------------------------------------------------------
+
+    /**
+     * @notice Sponsor a pool
+     * @param poolId The pool id
+     * @param amount The amount to sponsor
+     * @dev Pool status must be INACTIVE or DEPOSIT_ENABLED
+     * @dev Pool must be created
+     * @dev Amount must be greater than 0
+     * @dev Emits Sponsorship event
+     */
+    function sponsor(string calldata name, uint256 poolId, uint256 amount) external whenNotPaused {
+        require(
+            poolStatus[poolId] == POOLSTATUS.INACTIVE ||
+                poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED,
+            "Pool started"
+        );
+        require(poolAdmin[poolId].host != address(0), "Pool not created");
+        require(amount > 0, "Invalid amount");
+
+        // Update pool details
+        poolBalance[poolId].totalDeposits += amount;
+        poolBalance[poolId].balance += amount;
+        poolBalance[poolId].sponsored += amount;
+
+        // Update sponsor details
+        if (sponsorDetail[msg.sender][poolId].amount != 0) {
+            sponsorDetail[msg.sender][poolId].amount += amount;
+        } else {
+            sponsorDetail[msg.sender][poolId].init(name, amount);
+            sponsors[poolId].push(msg.sender);
+        }
+
+        // Transfer tokens from user to pool
+        poolToken[poolId].safeTransferFrom(msg.sender, address(this), amount);
+
+        emit EventsLib.SponsorshipAdded(poolId, msg.sender, amount);
     }
 
     // ----------------------------------------------------------------------------
@@ -569,6 +617,26 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     }
 
     /**
+     * @notice Get sponsors of a pool
+     * @param poolId The pool id
+     */
+    function getSponsors(uint256 poolId) external view returns (address[] memory) {
+        return sponsors[poolId];
+    }
+
+    /**
+     * @notice Get sponsor details of a pool
+     * @param poolId The pool id
+     * @param sponsor The sponsor address
+     */
+    function getSponsorDetail(
+        uint256 poolId,
+        address sponsor
+    ) external view returns (IPool.SponsorDetail memory) {
+        return sponsorDetail[sponsor][poolId];
+    }
+
+    /**
      * @notice Get fees rate of late refund
      * @param poolId The pool id
      * @return penaltyFeeRate The penalty fee rate
@@ -598,12 +666,12 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     }
 
     /**
-     * @notice Get extra balance of a pool
+     * @notice Get sponsored balance of a pool
      * @param poolId The pool id
-     * @return extraBalance The extra balance of the pool
+     * @return sponsorshipAmount The sponsored balance of the pool
      */
-    function getExtraBalance(uint256 poolId) external view returns (uint256) {
-        return poolBalance[poolId].getExtraBalance();
+    function getSponsorshipAmount(uint256 poolId) external view returns (uint256) {
+        return poolBalance[poolId].getSponsorshipAmount();
     }
 
     /**
@@ -888,7 +956,11 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
             poolBalance[poolId].feesAccumulated += fees;
 
             emit EventsLib.FeesCharged(poolId, msg.sender, fees);
-            emit EventsLib.PoolBalanceUpdated(poolId, prevBalance, prevBalance - fees);
+            emit EventsLib.PoolBalanceUpdated(
+                poolId,
+                prevBalance,
+                prevBalance - fees
+            );
         } else if (block.timestamp > timeStart) {
             revert ErrorsLib.EventStarted(
                 block.timestamp,
