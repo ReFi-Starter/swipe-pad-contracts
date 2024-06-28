@@ -11,8 +11,10 @@ contract CoreTest is Test {
     Droplet public token;
     address public host;
     address public alice;
+    address public bob;
     uint256 public amountToDeposit;
     uint256 public poolId;
+    uint256 public poolId2;
 
     modifier turnOffGasMetering() {
         vm.pauseGasMetering();
@@ -25,6 +27,7 @@ contract CoreTest is Test {
         token = new Droplet();
         host = vm.addr(1);
         alice = vm.addr(2);
+        bob = vm.addr(3);
         pool.grantRole(pool.WHITELISTED(), host);
     }
 
@@ -307,20 +310,17 @@ contract CoreTest is Test {
         // Get fees accumulated
         uint256 fees = pool.getFeesAccumulated(poolId);
         uint256 balanceBefore = token.balanceOf(host);
-        uint256 poolBalanceBefore = pool.getPoolBalance(poolId);
 
         // Check fees collected before calling collectFees
         assertEq(pool.getFeesCollected(poolId), 0);
         pool.collectFees(poolId);
         uint256 balanceAfter = token.balanceOf(host);
-        uint256 poolBalanceAfter = pool.getPoolBalance(poolId);
 
         assertEq(balanceAfter - balanceBefore, fees);
         assertEq(
             pool.getFeesAccumulated(poolId) - pool.getFeesCollected(poolId),
             0
         );
-        assertEq(poolBalanceBefore - poolBalanceAfter, fees);
     }
 
     function test_collectRemainingBalance() external {
@@ -344,32 +344,11 @@ contract CoreTest is Test {
     function test_collectRemainingBalance_tryExploitOtherPoolByHost() external {
         helper_createPool();
         helper_deposit();
-
-        // Set up another pool
         vm.pauseGasMetering();
-        address bob = vm.addr(3);
-        token.mint(bob, amountToDeposit);
+        helper_createPool2();
+        helper_deposit2();
 
-        // Grant role for alice to create pool
-        vm.startPrank(address(this));
-        pool.grantRole(pool.WHITELISTED(), alice);
-
-        // Alice create pool
-        vm.startPrank(alice);
-        uint256 newPoolId = pool.createPool(
-            uint40(block.timestamp),
-            uint40(block.timestamp + 10 days),
-            "New",
-            amountToDeposit,
-            0,
-            address(token)
-        );
-        pool.enableDeposit(newPoolId);
-        vm.startPrank(bob);
-        token.approve(address(pool), amountToDeposit);
-        pool.deposit(newPoolId, amountToDeposit);
-
-        // Do self refund to accumulate fees
+        // Do self refund in first pool to accumulate fees
         vm.startPrank(alice);
         vm.warp(block.timestamp + 9 days); // 24 hours Before pool start time
         pool.selfRefund(poolId);
@@ -380,24 +359,20 @@ contract CoreTest is Test {
         pool.startPool(poolId);
         pool.endPool(poolId);
 
-        // Get remaining balance
-        uint256 remainingBalance = pool.getPoolBalance(poolId);
-        uint256 balanceBefore = token.balanceOf(host);
-
-        pool.collectRemainingBalance(poolId);
-        uint256 balanceAfter = token.balanceOf(host);
-
-        assertEq(balanceAfter - balanceBefore, remainingBalance);
-        // PoolId balance should be 0
+        // PoolId balance should be 0 after alice selfRefund
         assertEq(pool.getPoolBalance(poolId), 0);
         // Try collectFees after 0 balance since there's fees accumulated
         uint256 fees = pool.getFeesAccumulated(poolId) -
             pool.getFeesCollected(poolId);
         assert(fees > 0);
+        pool.collectFees(poolId);
+
+        // Try exploit other pool by collecting remaining balance, pool 1 should already be 0
         vm.expectRevert();
         pool.collectFees(poolId);
         vm.stopPrank();
-        // Overall pool balance should be 100e18 (Test cross pool withdrawal by host)
+
+        // Overall pool balance should remains 100e18 for pool 2
         assertEq(token.balanceOf(address(pool)), amountToDeposit);
     }
 
@@ -448,7 +423,6 @@ contract CoreTest is Test {
         pool.endPool(poolId);
         vm.warp(block.timestamp + 1 days);
         pool.setWinner(poolId, alice, winnings);
-        Pool.PoolDetail memory detail = pool.getPoolDetail(poolId);
         vm.warp(block.timestamp + 3 days + 23 hours + 60 minutes + 1 seconds);
 
         pool.forfeitWinnings(poolId, alice);
@@ -542,11 +516,38 @@ contract CoreTest is Test {
         pool.enableDeposit(poolId);
     }
 
+    function helper_createPool2() private turnOffGasMetering {
+        // Create a second pool
+        // Grant role for alice to create pool
+        vm.startPrank(address(this));
+        pool.grantRole(pool.WHITELISTED(), alice);
+
+        // Alice create pool
+        vm.startPrank(alice);
+        poolId2 = pool.createPool(
+            uint40(block.timestamp),
+            uint40(block.timestamp + 10 days),
+            "New",
+            amountToDeposit,
+            0,
+            address(token)
+        );
+        pool.enableDeposit(poolId2);
+    }
+
     function helper_deposit() private turnOffGasMetering {
         // Deposit to the pool
         token.mint(alice, amountToDeposit);
         vm.startPrank(alice);
         token.approve(address(pool), amountToDeposit);
         pool.deposit(poolId, amountToDeposit);
+    }
+
+    function helper_deposit2() private turnOffGasMetering {
+        // Deposit to the pool
+        token.mint(bob, amountToDeposit);
+        vm.startPrank(bob);
+        token.approve(address(pool), amountToDeposit);
+        pool.deposit(poolId2, amountToDeposit);
     }
 }

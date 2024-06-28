@@ -29,11 +29,11 @@ interface IPool {
         uint256 feesAccumulated;
         uint256 feesCollected;
         uint256 balance; // real current balance of pool
-        uint256 extraBalance;
+        uint256 extraBalance; // donations made by participants
     }
 
     struct ParticipantDetail {
-        uint256 deposit; // used for assertion and isParticipant
+        uint256 deposit; // used for record
         uint256 feesCharged;
         uint120 participantIndex; // store index for easy removal
         uint120 joinedPoolsIndex; // store index for easy removal

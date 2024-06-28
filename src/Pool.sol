@@ -492,7 +492,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         uint256 fees = poolBalance[poolId].getFeesAccumulated() -
             poolBalance[poolId].getFeesCollected();
         require(fees != 0, "No fees to collect");
-        poolBalance[poolId].balance -= fees;
         poolBalance[poolId].feesCollected += fees;
 
         address host = poolAdmin[poolId].getHost();
@@ -883,10 +882,13 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         ) {
             uint256 fees = (getPoolFeeRate(poolId) *
                 getParticipantDeposit(msg.sender, poolId)) / FEES_PRECISION;
+            uint256 prevBalance = poolBalance[poolId].getBalance();
+            poolBalance[poolId].balance -= fees;
             participantDetail[msg.sender][poolId].feesCharged += fees;
             poolBalance[poolId].feesAccumulated += fees;
 
-            emit EventsLib.FeesCharged(poolId, msg.sender, fees, false);
+            emit EventsLib.FeesCharged(poolId, msg.sender, fees);
+            emit EventsLib.PoolBalanceUpdated(poolId, prevBalance, prevBalance - fees);
         } else if (block.timestamp > timeStart) {
             revert ErrorsLib.EventStarted(
                 block.timestamp,
