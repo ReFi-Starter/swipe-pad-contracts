@@ -36,11 +36,11 @@ contract PoolScript is Script {
         }
         pool.grantRole(pool.WHITELISTED_HOST(), signer);
         uint256 poolId = pool.createPool(
-            uint40(block.timestamp + 2 days), 
-            uint40(block.timestamp + 2 days + 6 hours), 
-            "Test pool", 
-            amount, 
-            3000, 
+            uint40(block.timestamp + 2 days),
+            uint40(block.timestamp + 2 days + 6 hours),
+            "Test pool",
+            amount,
+            3000,
             address(0xfD2Ec58cE4c87b253567Ff98ce2778de6AF0101b)
         );
         pool.enableDeposit(poolId);

@@ -17,7 +17,7 @@ contract AccessTest is Test {
         token = new Droplet();
         host = vm.addr(1);
         alice = vm.addr(2);
-		pool.grantRole(pool.WHITELISTED_HOST(), host);
+        pool.grantRole(pool.WHITELISTED_HOST(), host);
         vm.warp(1713935623);
 
         // Create a pool
@@ -41,21 +41,21 @@ contract AccessTest is Test {
         pool.deposit(1, amount);
     }
 
-	function test_pause() external {
-		vm.startPrank(address(this));
-		pool.pause();
-		bool paused = pool.paused();
-		assertEq(paused, true);
-		vm.stopPrank();
-	}
+    function test_pause() external {
+        vm.startPrank(address(this));
+        pool.pause();
+        bool paused = pool.paused();
+        assertEq(paused, true);
+        vm.stopPrank();
+    }
 
-	function test_pause_tryCreatePool() external {
-		vm.startPrank(address(this));
-		pool.pause();
-		pool.grantRole(pool.WHITELISTED_HOST(), address(this));
+    function test_pause_tryCreatePool() external {
+        vm.startPrank(address(this));
+        pool.pause();
+        pool.grantRole(pool.WHITELISTED_HOST(), address(this));
 
-		vm.expectRevert();
-		pool.createPool(
+        vm.expectRevert();
+        pool.createPool(
             uint40(block.timestamp + 10 days),
             uint40(block.timestamp + 11 days),
             "PoolParty",
@@ -63,53 +63,53 @@ contract AccessTest is Test {
             3000,
             address(token)
         );
-		vm.stopPrank();
-	}
+        vm.stopPrank();
+    }
 
-	function test_pause_tryDeposit() external {
-		vm.startPrank(address(this));
-		pool.pause();
-		pool.grantRole(pool.WHITELISTED_HOST(), address(this));
+    function test_pause_tryDeposit() external {
+        vm.startPrank(address(this));
+        pool.pause();
+        pool.grantRole(pool.WHITELISTED_HOST(), address(this));
 
-		uint256 amount = 100e18;
-		address bob = vm.addr(0xB0B);
+        uint256 amount = 100e18;
+        address bob = vm.addr(0xB0B);
         token.mint(bob, amount);
         vm.startPrank(bob);
         token.approve(address(pool), amount);
 
-		vm.expectRevert();
-		pool.deposit(1, amount);
-		vm.stopPrank();
-	}
+        vm.expectRevert();
+        pool.deposit(1, amount);
+        vm.stopPrank();
+    }
 
-	function test_pause_nonAdmin() external {
-		vm.startPrank(host);
-		vm.expectRevert();
-		pool.pause();
-		vm.stopPrank();
-	}
+    function test_pause_nonAdmin() external {
+        vm.startPrank(host);
+        vm.expectRevert();
+        pool.pause();
+        vm.stopPrank();
+    }
 
-	function test_unpause() external {
-		// Setup
-		vm.startPrank(address(this));
-		pool.pause();
+    function test_unpause() external {
+        // Setup
+        vm.startPrank(address(this));
+        pool.pause();
 
-		// Unpause contract
-		pool.unpause();
-		bool paused = pool.paused();
-		assertEq(paused, false);
-		vm.stopPrank();
-	}
+        // Unpause contract
+        pool.unpause();
+        bool paused = pool.paused();
+        assertEq(paused, false);
+        vm.stopPrank();
+    }
 
-	function test_unpause_nonAdmin() external {
-		// Setup
-		vm.startPrank(address(this));
-		pool.pause();
+    function test_unpause_nonAdmin() external {
+        // Setup
+        vm.startPrank(address(this));
+        pool.pause();
 
-		// Should fail
-		vm.startPrank(host);
-		vm.expectRevert();
-		pool.unpause();
-		vm.stopPrank();
-	}
+        // Should fail
+        vm.startPrank(host);
+        vm.expectRevert();
+        pool.unpause();
+        vm.stopPrank();
+    }
 }

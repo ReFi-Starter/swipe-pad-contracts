@@ -21,7 +21,7 @@ contract Ownable2Step is Ownable {
 
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
 
-	constructor(address deployer) Ownable(deployer) {}
+    constructor(address deployer) Ownable(deployer) {}
 
     /**
      * @dev Returns the address of the pending owner.
