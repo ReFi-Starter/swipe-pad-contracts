@@ -205,7 +205,24 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
-    function test_setSameWinnerMultipleTimes() external {
+    function test_setWinner_exceedPoolBalance() external {
+        helper_createPool();
+        helper_deposit();
+
+        uint256 winnings = 1000e18;
+
+        vm.startPrank(host);
+        pool.startPool(poolId);
+        pool.endPool(poolId);
+
+        // Expect revert because winnings exceed pool balance
+        vm.expectRevert();
+        pool.setWinner(poolId, alice, winnings);
+
+        vm.stopPrank();
+    }
+
+    function test_setWinner_sameWinnerMultipleTimes() external {
         helper_createPool();
         helper_deposit();
 
@@ -222,7 +239,7 @@ contract CoreTest is Test {
         vm.stopPrank();
     }
 
-    function test_setMultipleWinners_poolRemainingBalanceShouldBeZero() external {
+    function test_setWinnersMultiple_poolRemainingBalanceZero() external {
         helper_createPool();
         helper_deposit();
 
@@ -334,8 +351,8 @@ contract CoreTest is Test {
         helper_createPool();
         helper_deposit();
         vm.pauseGasMetering();
-        helper_createPool2();
-        helper_deposit2();
+        helper_createSecondPool();
+        helper_depositSecond();
 
         // Do self refund in first pool to accumulate fees
         vm.startPrank(alice);
@@ -546,7 +563,7 @@ contract CoreTest is Test {
         pool.enableDeposit(poolId);
     }
 
-    function helper_createPool2() private turnOffGasMetering {
+    function helper_createSecondPool() private turnOffGasMetering {
         // Create a second pool
         // Grant role for alice to create pool
         vm.startPrank(address(this));
@@ -568,7 +585,7 @@ contract CoreTest is Test {
         pool.deposit(poolId, amountToDeposit);
     }
 
-    function helper_deposit2() private turnOffGasMetering {
+    function helper_depositSecond() private turnOffGasMetering {
         // Deposit to the pool
         token.mint(bob, amountToDeposit);
         vm.startPrank(bob);
