@@ -9,7 +9,6 @@ library EventsLib {
         address indexed host,
         string poolName,
         uint256 depositAmountPerPerson,
-        uint256 penaltyFeeRate,
         address indexed token
     );
     event PoolBalanceUpdated(uint256 poolId, uint256 balanceBefore, uint256 balanceAfter);

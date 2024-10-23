@@ -225,7 +225,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
      * @param timeEnd The end time of the pool
      * @param poolName The name of the pool
      * @param depositAmountPerPerson The amount to deposit per person
-     * @param penaltyFeeRate The penalty fee rate
      * @param token The token to use for the pool
      * @dev Pool status will be INACTIVE
      * @dev Emits PoolCreated event
@@ -235,7 +234,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         uint40 timeEnd,
         string calldata poolName,
         uint256 depositAmountPerPerson, // Can be 0 in case of sponsored pool
-        uint16 penaltyFeeRate, // 10000 = 100%
         address token
     ) external onlyRole(WHITELISTED_HOST) whenNotPaused returns (uint256) {
         require(timeStart < timeEnd, "Invalid timing");
@@ -251,7 +249,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         poolDetail[latestPoolId].setDepositAmountPerPerson(depositAmountPerPerson);
 
         // Pool admin details
-        poolAdmin[latestPoolId].setPenaltyFeeRate(penaltyFeeRate);
         poolAdmin[latestPoolId].setHost(msg.sender);
         isHost[msg.sender][latestPoolId] = true;
         createdPools[msg.sender].push(latestPoolId);
@@ -259,7 +256,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         // Pool token
         poolToken[latestPoolId] = IERC20(token);
 
-        emit EventsLib.PoolCreated(latestPoolId, msg.sender, poolName, depositAmountPerPerson, penaltyFeeRate, token);
+        emit EventsLib.PoolCreated(latestPoolId, msg.sender, poolName, depositAmountPerPerson, token);
         return latestPoolId;
     }
 

@@ -14,7 +14,6 @@ interface IPool {
 
     struct PoolAdmin {
         address host;
-        uint16 penaltyFeeRate; // 0.01% (1) to 100% (10000)
     }
 
     struct PoolDetail {
@@ -103,7 +102,6 @@ interface IPool {
      * @param timeEnd The end time of the pool
      * @param poolName The name of the pool
      * @param depositAmountPerPerson The amount to deposit per person
-     * @param penaltyFeeRate The penalty fee rate
      * @param token The token to use for the pool
      * @dev Pool status will be INACTIVE
      * @dev Emits PoolCreated event
@@ -113,7 +111,6 @@ interface IPool {
         uint40 timeEnd,
         string calldata poolName,
         uint256 depositAmountPerPerson, // Can be 0 in case of sponsored pool
-        uint16 penaltyFeeRate, // 10000 = 100%
         address token
     ) external returns (uint256);
 

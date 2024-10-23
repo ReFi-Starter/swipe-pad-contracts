@@ -22,13 +22,11 @@ contract AccessTest is Test {
 
         // Create a pool
         vm.startPrank(host);
-        uint16 feeRate = 3000; // 30% fees
         pool.createPool(
             uint40(block.timestamp + 10 days),
             uint40(block.timestamp + 11 days),
             "PoolParty",
             100e18,
-            feeRate,
             address(token)
         );
         pool.enableDeposit(1);
@@ -60,7 +58,6 @@ contract AccessTest is Test {
             uint40(block.timestamp + 11 days),
             "PoolParty",
             100e18,
-            3000,
             address(token)
         );
         vm.stopPrank();

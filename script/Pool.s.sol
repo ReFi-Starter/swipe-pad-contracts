@@ -52,7 +52,6 @@ contract PoolScript is Script {
             uint40(block.timestamp + 2 days + 6 hours),
             "Test pool",
             amount,
-            3000,
             address(0xfD2Ec58cE4c87b253567Ff98ce2778de6AF0101b)
         );
         pool.enableDeposit(poolId);

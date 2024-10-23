@@ -33,14 +33,12 @@ contract CoreTest is Test {
 
     function test_createPool() public {
         vm.startPrank(host);
-        uint16 feeRate = 3000; // 30% fees
 
         poolId = pool.createPool(
             uint40(block.timestamp + 10 days),
             uint40(block.timestamp + 11 days),
             "PoolParty",
             100e18,
-            feeRate,
             address(token)
         );
         address res = pool.getHost(poolId);
@@ -456,13 +454,11 @@ contract CoreTest is Test {
         // Create a pool
         vm.startPrank(host);
         amountToDeposit = 100e18;
-        uint16 feeRate = 3000; // 30% fees
         poolId = pool.createPool(
             uint40(block.timestamp + 10 days),
             uint40(block.timestamp + 11 days),
             "PoolParty",
             amountToDeposit,
-            feeRate,
             address(token)
         );
         pool.enableDeposit(poolId);
@@ -477,7 +473,7 @@ contract CoreTest is Test {
         // Alice create pool
         vm.startPrank(alice);
         poolId2 = pool.createPool(
-            uint40(block.timestamp), uint40(block.timestamp + 10 days), "New", amountToDeposit, 0, address(token)
+            uint40(block.timestamp), uint40(block.timestamp + 10 days), "New", amountToDeposit, address(token)
         );
         pool.enableDeposit(poolId2);
     }
