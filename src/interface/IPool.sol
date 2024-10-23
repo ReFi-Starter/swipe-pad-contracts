@@ -212,14 +212,6 @@ interface IPool {
     function refundParticipant(uint256 poolId, address participant, uint256 amount) external;
 
     /**
-     * @notice Collect fees
-     * @param poolId The pool id
-     * @dev Only send to host
-     * @dev Emits FeesCollected event
-     */
-    function collectFees(uint256 poolId) external;
-
-    /**
      * @notice Collect remaining balance if any
      * @param poolId The pool id
      * @dev Only send to host
@@ -250,13 +242,6 @@ interface IPool {
     function getHost(uint256 poolId) external view returns (address);
 
     /**
-     * @notice Get fees rate of late refund
-     * @param poolId The pool id
-     * @return penaltyFeeRate The penalty fee rate
-     */
-    function getPoolFeeRate(uint256 poolId) external view returns (uint16);
-
-    /**
      * @notice Get pool details
      * @param poolId The pool id
      * @return poolDetail The pool details
@@ -276,20 +261,6 @@ interface IPool {
      * @return sponsorshipAmount The sponsored balance of the pool
      */
     function getSponsorshipAmount(uint256 poolId) external view returns (uint256);
-
-    /**
-     * @notice Get fees accumulated in a pool
-     * @param poolId The pool id
-     * @return feesAccumulated The fees accumulated in the pool
-     */
-    function getFeesAccumulated(uint256 poolId) external view returns (uint256);
-
-    /**
-     * @notice Get fees collected in a pool
-     * @param poolId The pool id
-     * @return feesCollected The fees collected in the pool
-     */
-    function getFeesCollected(uint256 poolId) external view returns (uint256);
 
     /**
      * @notice Get deposit of a participant in a pool

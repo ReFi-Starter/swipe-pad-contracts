@@ -17,6 +17,18 @@ contract PoolScript is Script {
         vm.stopBroadcast();
     }
 
+    function run_whitelist() public {
+        vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
+
+        address toWhitelist = 0x2B7E209755760b4E47d56299535A4F239236e1eD;
+
+        pool = Pool(0x5CA11740144513897Be27e3E82D75Aa75067F712);
+        pool.grantRole(pool.WHITELISTED_HOST(), toWhitelist);
+        pool.grantRole(pool.WHITELISTED_SPONSOR(), toWhitelist);
+        
+        vm.stopBroadcast();
+    }
+
     function run_withMock() public {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         pool = new Pool();

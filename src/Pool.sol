@@ -6,7 +6,7 @@ import {IPool} from "./interface/IPool.sol";
 import {IERC20} from "./interface/IERC20.sol";
 
 /// Libraries
-import {FEES_PRECISION, FORFEIT_WINNINGS_TIMELOCK} from "./library/ConstantsLib.sol";
+import {FORFEIT_WINNINGS_TIMELOCK} from "./library/ConstantsLib.sol";
 import {EventsLib} from "./library/EventsLib.sol";
 import {ErrorsLib} from "./library/ErrorsLib.sol";
 import {PoolAdminLib} from "./library/PoolAdminLib.sol";
@@ -168,10 +168,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         require(isParticipant[msg.sender][poolId], "Not a participant");
         require(winnerDetail[msg.sender][poolId].getAmountWon() == 0, "Winner cannot do refund");
 
-        // Apply fees if pool is not deleted
-        if (poolStatus[poolId] != POOLSTATUS.DELETED) {
-            _applyFees(poolId);
-        }
         _refund(poolId, msg.sender, 0); // 0 means use default deposit amount after fees
     }
 
@@ -243,7 +239,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         address token
     ) external onlyRole(WHITELISTED_HOST) whenNotPaused returns (uint256) {
         require(timeStart < timeEnd, "Invalid timing");
-        require(penaltyFeeRate <= FEES_PRECISION, "Invalid fees rate");
         require(UtilsLib.isContract(token), "Token not contract");
 
         // Increment pool id
@@ -458,24 +453,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     }
 
     /**
-     * @notice Collect fees
-     * @param poolId The pool id
-     * @dev Only send to host
-     * @dev Emits FeesCollected event
-     */
-    function collectFees(uint256 poolId) external whenNotPaused {
-        // Transfer fees to host
-        uint256 fees = poolBalance[poolId].getFeesAccumulated() - poolBalance[poolId].getFeesCollected();
-        require(fees != 0, "No fees to collect");
-        poolBalance[poolId].feesCollected += fees;
-
-        address host = poolAdmin[poolId].getHost();
-        poolToken[poolId].safeTransfer(host, fees);
-
-        emit EventsLib.FeesCollected(poolId, host, fees);
-    }
-
-    /**
      * @notice Collect remaining balance if any
      * @param poolId The pool id
      * @dev Only send to host
@@ -548,15 +525,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     }
 
     /**
-     * @notice Get fees rate of late refund
-     * @param poolId The pool id
-     * @return penaltyFeeRate The penalty fee rate
-     */
-    function getPoolFeeRate(uint256 poolId) public view returns (uint16) {
-        return poolAdmin[poolId].getPenaltyFeeRate();
-    }
-
-    /**
      * @notice Get pool details
      * @param poolId The pool id
      * @return poolDetail The pool details
@@ -581,24 +549,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
      */
     function getSponsorshipAmount(uint256 poolId) external view returns (uint256) {
         return poolBalance[poolId].getSponsorshipAmount();
-    }
-
-    /**
-     * @notice Get fees accumulated in a pool
-     * @param poolId The pool id
-     * @return feesAccumulated The fees accumulated in the pool
-     */
-    function getFeesAccumulated(uint256 poolId) external view returns (uint256) {
-        return poolBalance[poolId].getFeesAccumulated();
-    }
-
-    /**
-     * @notice Get fees collected in a pool
-     * @param poolId The pool id
-     * @return feesCollected The fees collected in the pool
-     */
-    function getFeesCollected(uint256 poolId) external view returns (uint256) {
-        return poolBalance[poolId].getFeesCollected();
     }
 
     /**
@@ -762,9 +712,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
      */
     function _refund(uint256 poolId, address participant, uint256 amount) internal {
         uint256 deposited = ParticipantDetailLib.getDeposit(participantDetail, participant, poolId);
-        if (amount == 0) {
-            amount = deposited - ParticipantDetailLib.getFeesCharged(participantDetail, participant, poolId);
-        }
+        if (amount == 0) amount = deposited;
         require(amount <= deposited, "Not enough balance");
 
         // Update participant details
@@ -786,26 +734,5 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         poolToken[poolId].safeTransfer(participant, amount);
 
         emit EventsLib.Refund(poolId, participant, amount);
-    }
-
-    /**
-     * @notice Apply fees to a participant if event is < 24 hours to start
-     * @param poolId The pool id
-     */
-    function _applyFees(uint256 poolId) internal {
-        // Charge fees if event is < 24 hours to start or started
-        uint40 timeStart = poolDetail[poolId].getTimeStart();
-        if (block.timestamp >= timeStart - 1 days && block.timestamp <= timeStart) {
-            uint256 fees = (getPoolFeeRate(poolId) * getParticipantDeposit(msg.sender, poolId)) / FEES_PRECISION;
-            uint256 prevBalance = poolBalance[poolId].getBalance();
-            poolBalance[poolId].balance -= fees;
-            participantDetail[msg.sender][poolId].feesCharged += fees;
-            poolBalance[poolId].feesAccumulated += fees;
-
-            emit EventsLib.FeesCharged(poolId, msg.sender, fees);
-            emit EventsLib.PoolBalanceUpdated(poolId, prevBalance, prevBalance - fees);
-        } else if (block.timestamp > timeStart) {
-            revert ErrorsLib.EventStarted(block.timestamp, timeStart, msg.sender);
-        }
     }
 }
