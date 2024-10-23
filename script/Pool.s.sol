@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import {Script, console} from "forge-std/Script.sol";
 import {Pool} from "../src/Pool.sol";
 import {Droplet} from "../src/mock/MockERC20.sol";
+import {WHITELISTED_HOST, WHITELISTED_SPONSOR} from "../src/library/ConstantsLib.sol";
 
 contract PoolScript is Script {
     Pool public pool;
@@ -23,8 +24,8 @@ contract PoolScript is Script {
         address toWhitelist = 0x2B7E209755760b4E47d56299535A4F239236e1eD;
 
         pool = Pool(0x5CA11740144513897Be27e3E82D75Aa75067F712);
-        pool.grantRole(pool.WHITELISTED_HOST(), toWhitelist);
-        pool.grantRole(pool.WHITELISTED_SPONSOR(), toWhitelist);
+        pool.grantRole(WHITELISTED_HOST, toWhitelist);
+        pool.grantRole(WHITELISTED_SPONSOR, toWhitelist);
         
         vm.stopBroadcast();
     }
@@ -46,7 +47,7 @@ contract PoolScript is Script {
         if (token.balanceOf(signer) == 0) {
             token.mint(signer, 1000e18);
         }
-        pool.grantRole(pool.WHITELISTED_HOST(), signer);
+        pool.grantRole(WHITELISTED_HOST, signer);
         uint256 poolId = pool.createPool(
             uint40(block.timestamp + 2 days),
             uint40(block.timestamp + 2 days + 6 hours),

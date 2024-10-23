@@ -6,7 +6,7 @@ import {IPool} from "./interface/IPool.sol";
 import {IERC20} from "./interface/IERC20.sol";
 
 /// Libraries
-import {FORFEIT_WINNINGS_TIMELOCK} from "./library/ConstantsLib.sol";
+import {WHITELISTED_HOST, WHITELISTED_SPONSOR, FEES_MANAGER, FEES_PRECISION, FORFEIT_WINNINGS_TIMELOCK} from "./library/ConstantsLib.sol";
 import {EventsLib} from "./library/EventsLib.sol";
 import {ErrorsLib} from "./library/ErrorsLib.sol";
 import {PoolAdminLib} from "./library/PoolAdminLib.sol";
@@ -34,8 +34,6 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     using SponsorDetailLib for IPool.SponsorDetail;
 
     uint256 public latestPoolId; // Start from 1, 0 is invalid
-    bytes32 public constant WHITELISTED_HOST = keccak256("WHITELISTED_HOST");
-    bytes32 public constant WHITELISTED_SPONSOR = keccak256("WHITELISTED_SPONSOR");
 
     /// @dev Pool specific mappings
     mapping(uint256 => PoolAdmin) public poolAdmin;
@@ -694,7 +692,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     }
 
     function emergencyWithdraw(IERC20 token, uint256 amount) external onlyOwner whenPaused {
-        token.safeTransfer(msg.sender, amount);
+        token.safeTransfer(owner(), amount);
     }
 
     // ----------------------------------------------------------------------------

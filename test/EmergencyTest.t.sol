@@ -32,7 +32,7 @@ contract ParticipantTest is Test {
         host = vm.addr(1);
         alice = vm.addr(2);
         bob = vm.addr(3);
-        pool.grantRole(pool.WHITELISTED_HOST(), host);
+        pool.grantRole(WHITELISTED_HOST, host);
     }
 
     function test_emergencyWithdraw() public {
@@ -156,7 +156,7 @@ contract ParticipantTest is Test {
         // Create a second pool
         // Grant role for alice to create pool
         vm.startPrank(address(this));
-        pool.grantRole(pool.WHITELISTED_HOST(), alice);
+        pool.grantRole(WHITELISTED_HOST, alice);
 
         // Alice create pool
         vm.startPrank(alice);

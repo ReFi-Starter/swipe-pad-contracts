@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import {Test, console} from "forge-std/Test.sol";
 import {Pool} from "../src/Pool.sol";
 import {Droplet} from "../src/mock/MockERC20.sol";
-import "../src/library/ConstantsLib.sol";
+import {WHITELISTED_HOST, WHITELISTED_SPONSOR} from "../src/library/ConstantsLib.sol";
 
 contract AccessTest is Test {
     Pool public pool;
@@ -17,7 +17,7 @@ contract AccessTest is Test {
         token = new Droplet();
         host = vm.addr(1);
         alice = vm.addr(2);
-        pool.grantRole(pool.WHITELISTED_HOST(), host);
+        pool.grantRole(WHITELISTED_HOST, host);
         vm.warp(1713935623);
 
         // Create a pool
@@ -50,7 +50,7 @@ contract AccessTest is Test {
     function test_pause_tryCreatePool() external {
         vm.startPrank(address(this));
         pool.pause();
-        pool.grantRole(pool.WHITELISTED_HOST(), address(this));
+        pool.grantRole(WHITELISTED_HOST, address(this));
 
         vm.expectRevert();
         pool.createPool(
@@ -66,7 +66,7 @@ contract AccessTest is Test {
     function test_pause_tryDeposit() external {
         vm.startPrank(address(this));
         pool.pause();
-        pool.grantRole(pool.WHITELISTED_HOST(), address(this));
+        pool.grantRole(WHITELISTED_HOST, address(this));
 
         uint256 amount = 100e18;
         address bob = vm.addr(0xB0B);
