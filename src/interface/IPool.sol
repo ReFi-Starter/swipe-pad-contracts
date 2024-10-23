@@ -25,7 +25,6 @@ interface IPool {
 
     struct PoolBalance {
         uint256 totalDeposits; // total deposit amount (won't reduce, for record)
-        uint256 feesAccumulated;
         uint256 feesCollected;
         uint256 balance; // real current balance of pool
         uint256 sponsored; // extra balance from sponsor or participants

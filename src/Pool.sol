@@ -34,6 +34,8 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     using SponsorDetailLib for IPool.SponsorDetail;
 
     uint256 public latestPoolId; // Start from 1, 0 is invalid
+    uint16 public feeRate; // 100% = 10000
+    mapping(IERC20 => uint256) public feesBalance; // Total fees collected
 
     /// @dev Pool specific mappings
     mapping(uint256 => PoolAdmin) public poolAdmin;
@@ -91,8 +93,14 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         uint256 amountPerPerson = poolDetail[poolId].getDepositAmountPerPerson();
         require(amount >= amountPerPerson, "Incorrect amount");
 
+        // Calculate fees
+        uint256 fees = (amount * feeRate) / FEES_PRECISION;
+        uint256 originalAmount = amount; // Store original amount
+        feesBalance[poolToken[poolId]] += fees; // Update fees balance
+        amount -= fees; // Subtract fees from amount
+
         // Excess as extra donation
-        if (amount > amountPerPerson) {
+        if (originalAmount > amountPerPerson) {
             poolBalance[poolId].sponsored += amount - amountPerPerson;
             emit EventsLib.ExtraDeposit(poolId, msg.sender, amount - amountPerPerson);
         }
@@ -101,12 +109,13 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         poolBalance[poolId].balance += amount;
         participantDetail[msg.sender][poolId].setParticipantIndex(participants[poolId].length);
         participants[poolId].push(msg.sender);
+        poolBalance[poolId].addFeesCollected(fees);
 
         // Update participant details
         participantDetail[msg.sender][poolId].setJoinedPoolsIndex(joinedPools[msg.sender].length);
         joinedPools[msg.sender].push(poolId);
         isParticipant[msg.sender][poolId] = true;
-        participantDetail[msg.sender][poolId].deposit = amountPerPerson;
+        participantDetail[msg.sender][poolId].deposit = amount;
 
         // Edge case for rejoin
         if (participantDetail[msg.sender][poolId].isRefunded() || winnerDetail[msg.sender][poolId].isClaimed()) {
@@ -116,9 +125,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         }
 
         // Transfer tokens from user to pool
-        poolToken[poolId].safeTransferFrom(msg.sender, address(this), amount);
+        poolToken[poolId].safeTransferFrom(msg.sender, address(this), originalAmount);
 
         emit EventsLib.Deposit(poolId, msg.sender, amount);
+        emit EventsLib.FeesCollected(poolId, fees);
         return true;
     }
 
@@ -194,7 +204,14 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         require(poolAdmin[poolId].host != address(0), "Pool not created");
         require(amount > 0, "Invalid amount");
 
+        // Calculate fees
+        uint256 fees = (amount * feeRate) / FEES_PRECISION;
+        uint256 originalAmount = amount; // Store original amount
+        feesBalance[poolToken[poolId]] += fees; // Update fees balance
+        amount -= fees; // Subtract fees from amount
+
         // Update pool details
+        poolBalance[poolId].addFeesCollected(fees);
         poolBalance[poolId].totalDeposits += amount;
         poolBalance[poolId].balance += amount;
         poolBalance[poolId].sponsored += amount;
@@ -208,9 +225,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         }
 
         // Transfer tokens from user to pool
-        poolToken[poolId].safeTransferFrom(msg.sender, address(this), amount);
+        poolToken[poolId].safeTransferFrom(msg.sender, address(this), originalAmount);
 
         emit EventsLib.SponsorshipAdded(poolId, msg.sender, amount);
+        emit EventsLib.FeesCollected(poolId, fees);
     }
 
     // ----------------------------------------------------------------------------
@@ -677,6 +695,40 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
             participants[poolId],
             winners[poolId]
         );
+    }
+
+    function getFeesCollected(uint256 poolId) external view returns (uint256) {
+        return poolBalance[poolId].getFeesCollected();
+    }
+
+    function getFeesBalance(IERC20 token) external view returns (uint256) {
+        return feesBalance[token];
+    }
+
+    // ----------------------------------------------------------------------------
+    // Fees Manager Functions
+    // ----------------------------------------------------------------------------
+
+    /**
+     * @notice Set fee rate
+     * @param _feeRate The fee rate
+     */
+    function setFee(uint16 _feeRate) external onlyRole(FEES_MANAGER) {
+        require(_feeRate <= FEES_PRECISION, "Invalid fees");
+        feeRate = _feeRate;
+    }
+
+    /**
+     * @notice Withdraw fees
+     * @param token The token address
+     * @param amount The amount to withdraw
+     */
+    function withdrawFees(IERC20 token, uint256 amount) external onlyRole(FEES_MANAGER) {
+        require(amount <= feesBalance[token], "Not enough fees");
+        feesBalance[token] -= amount;
+        token.safeTransfer(msg.sender, amount);
+
+        emit EventsLib.FeesWithdrawn(token, amount);
     }
 
     // ----------------------------------------------------------------------------

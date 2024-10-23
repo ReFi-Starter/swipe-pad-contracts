@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {Pool} from "../src/Pool.sol";
 import {Droplet} from "../src/mock/MockERC20.sol";
 import "../src/library/ConstantsLib.sol";
+import {IERC20} from "../src/interface/IERC20.sol";
 
 contract CoreTest is Test {
     Pool public pool;
@@ -55,8 +56,25 @@ contract CoreTest is Test {
         token.approve(address(pool), amountToDeposit);
         pool.deposit(poolId, amountToDeposit);
         uint256 res = pool.getParticipantDeposit(alice, poolId);
+        pool.getFeesCollected(poolId);
 
         assertEq(res, amountToDeposit);
+        vm.stopPrank();
+    }
+
+    function test_depositWithFees() public {
+        helper_createPoolWithFees();
+
+        token.mint(alice, amountToDeposit);
+        vm.startPrank(alice);
+        token.approve(address(pool), amountToDeposit);
+        pool.deposit(poolId, amountToDeposit);
+        uint256 res = pool.getParticipantDeposit(alice, poolId);
+        uint256 fees = pool.getFeesCollected(poolId);
+        uint256 feesBalance = pool.getFeesBalance(IERC20(address(token)));
+
+        assertEq(res, amountToDeposit - fees); // Deposit should be amountToDeposit - fees
+        assertEq(feesBalance, fees); // Fees balance should be same as collected
         vm.stopPrank();
     }
 
@@ -443,11 +461,43 @@ contract CoreTest is Test {
         pool.sponsor("projectA", poolId, amount);
     }
 
+    function test_withdrawFees() external {
+        helper_createPoolWithFees();
+        helper_deposit();
+
+        vm.startPrank(address(this));
+        uint256 balanceBefore = token.balanceOf(address(this));
+        pool.withdrawFees(IERC20(address(token)), 10e18);
+        uint256 balanceAfter = token.balanceOf(address(this));
+
+        assertEq(balanceAfter - balanceBefore, 10e18);
+    }
+
     // ----------------------------------------------------------------------------
     // Helper Functions
     // ----------------------------------------------------------------------------
 
     function helper_createPool() private turnOffGasMetering {
+        // Warp to random time
+        vm.warp(1713935623);
+
+        // Create a pool
+        vm.startPrank(host);
+        amountToDeposit = 100e18;
+        poolId = pool.createPool(
+            uint40(block.timestamp + 10 days),
+            uint40(block.timestamp + 11 days),
+            "PoolParty",
+            amountToDeposit,
+            address(token)
+        );
+        pool.enableDeposit(poolId);
+    }
+    
+    function helper_createPoolWithFees() private turnOffGasMetering {
+        pool.grantRole(FEES_MANAGER, address(this));
+        pool.setFee(280); // 2.80%
+
         // Warp to random time
         vm.warp(1713935623);
 

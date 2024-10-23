@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IPool} from "../interface/IPool.sol";
+import {IERC20} from "../interface/IERC20.sol";
 
 library EventsLib {
     event PoolCreated(
@@ -27,4 +28,6 @@ library EventsLib {
     event PoolNameChanged(uint256 poolId, string poolName);
     event ParticipantRejoined(uint256 poolId, address indexed participant);
     event SponsorshipAdded(uint256 poolId, address indexed sponsor, uint256 amount);
+    event FeesCollected(uint256 poolId, uint256 amount);
+    event FeesWithdrawn(IERC20 token, uint256 amount);
 }
