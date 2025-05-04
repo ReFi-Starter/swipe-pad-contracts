@@ -3,18 +3,18 @@ pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
 import {Pool} from "../src/Pool.sol";
-import {Droplet} from "../src/mock/MockERC20.sol";
+import {MockERC20} from "../src/mock/MockERC20.sol";
 import "../src/library/ConstantsLib.sol";
 
 contract AccessTest is Test {
     Pool public pool;
-    Droplet public token;
+    MockERC20 public token;
     address public host;
     address public alice;
 
     function setUp() public {
         pool = new Pool();
-        token = new Droplet();
+        token = new MockERC20("Test Token", "TST", 18);
         host = vm.addr(1);
         alice = vm.addr(2);
         pool.grantRole(pool.WHITELISTED_HOST(), host);

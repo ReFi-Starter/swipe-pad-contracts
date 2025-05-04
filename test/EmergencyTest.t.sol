@@ -3,14 +3,14 @@ pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
 import {Pool} from "../src/Pool.sol";
-import {Droplet} from "../src/mock/MockERC20.sol";
+import {MockERC20} from "../src/mock/MockERC20.sol";
 import "../src/library/ConstantsLib.sol";
 import {IERC20} from "../src/interface/IERC20.sol";
 
 contract ParticipantTest is Test {
-	Pool public pool;
-    Droplet public token;
-    Droplet public token2;
+    Pool public pool;
+    MockERC20 public token;
+    MockERC20 public token2;
     address public host;
     address public alice;
     address public bob;
@@ -23,12 +23,12 @@ contract ParticipantTest is Test {
         vm.pauseGasMetering();
         _;
         vm.resumeGasMetering();
-    }    
+    }
 
     function setUp() public {
         pool = new Pool();
-        token = new Droplet();
-        token2 = new Droplet();
+        token = new MockERC20("Test Token", "TST", 18);
+        token2 = new MockERC20("Test Token 2", "TST2", 18);
         host = vm.addr(1);
         alice = vm.addr(2);
         bob = vm.addr(3);
@@ -42,7 +42,10 @@ contract ParticipantTest is Test {
         vm.startPrank(address(this)); // Start prank deployer
         uint256 startingBalance = token.balanceOf(address(this));
         pool.pause();
-        pool.emergencyWithdraw(IERC20(address(token)), pool.getPoolBalance(poolId));
+        pool.emergencyWithdraw(
+            IERC20(address(token)),
+            pool.getPoolBalance(poolId)
+        );
         uint256 endingBalance = token.balanceOf(address(this));
 
         // Make sure balance change is correct
@@ -61,7 +64,10 @@ contract ParticipantTest is Test {
         vm.startPrank(address(this)); // Start prank deployer
         uint256 startingBalance = token.balanceOf(address(this));
         pool.pause();
-        pool.emergencyWithdraw(IERC20(address(token)), pool.getPoolBalance(poolId));
+        pool.emergencyWithdraw(
+            IERC20(address(token)),
+            pool.getPoolBalance(poolId)
+        );
         uint256 endingBalance = token.balanceOf(address(this));
 
         // Make sure balance change is correct
@@ -81,7 +87,10 @@ contract ParticipantTest is Test {
         vm.startPrank(address(this)); // Start prank deployer
         uint256 startingBalance = token.balanceOf(address(this));
         pool.pause();
-        pool.emergencyWithdraw(IERC20(address(token)), pool.getPoolBalance(poolId));
+        pool.emergencyWithdraw(
+            IERC20(address(token)),
+            pool.getPoolBalance(poolId)
+        );
         uint256 endingBalance = token.balanceOf(address(this));
 
         // Make sure balance change is correct
@@ -99,7 +108,8 @@ contract ParticipantTest is Test {
         vm.startPrank(address(this)); // Start prank deployer
         uint256 startingBalance = token.balanceOf(address(this));
         pool.pause();
-        uint256 toWithdraw = pool.getPoolBalance(poolId) + pool.getPoolBalance(poolId2);
+        uint256 toWithdraw = pool.getPoolBalance(poolId) +
+            pool.getPoolBalance(poolId2);
         pool.emergencyWithdraw(IERC20(address(token)), toWithdraw);
         uint256 endingBalance = token.balanceOf(address(this));
 
@@ -119,8 +129,14 @@ contract ParticipantTest is Test {
         uint256 startingBalance = token.balanceOf(address(this));
         uint256 startingBalance2 = token2.balanceOf(address(this));
         pool.pause();
-        pool.emergencyWithdraw(IERC20(address(token)), pool.getPoolBalance(poolId));
-        pool.emergencyWithdraw(IERC20(address(token2)), pool.getPoolBalance(poolId));
+        pool.emergencyWithdraw(
+            IERC20(address(token)),
+            pool.getPoolBalance(poolId)
+        );
+        pool.emergencyWithdraw(
+            IERC20(address(token2)),
+            pool.getPoolBalance(poolId)
+        );
         uint256 endingBalance = token.balanceOf(address(this));
         uint256 endingBalance2 = token2.balanceOf(address(this));
 
@@ -163,7 +179,12 @@ contract ParticipantTest is Test {
         // Alice create pool
         vm.startPrank(alice);
         poolId2 = pool.createPool(
-            uint40(block.timestamp), uint40(block.timestamp + 10 days), "New", amountToDeposit, 0, address(token)
+            uint40(block.timestamp),
+            uint40(block.timestamp + 10 days),
+            "New",
+            amountToDeposit,
+            0,
+            address(token)
         );
         pool.enableDeposit(poolId2);
     }

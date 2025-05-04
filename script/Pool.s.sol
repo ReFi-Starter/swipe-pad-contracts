@@ -3,11 +3,11 @@ pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
 import {Pool} from "../src/Pool.sol";
-import {Droplet} from "../src/mock/MockERC20.sol";
+import {MockERC20} from "../src/mock/MockERC20.sol";
 
 contract PoolScript is Script {
     Pool public pool;
-    Droplet public token;
+    MockERC20 public token;
 
     function setUp() public {}
 
@@ -20,7 +20,7 @@ contract PoolScript is Script {
     function run_withMock() public {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         pool = new Pool();
-        token = new Droplet();
+        token = new MockERC20("Test Token", "TST", 18);
         vm.stopBroadcast();
     }
 
@@ -28,7 +28,7 @@ contract PoolScript is Script {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         address signer = vm.addr(vm.envUint("PRIVATE_KEY"));
         pool = new Pool();
-        token = Droplet(0xfD2Ec58cE4c87b253567Ff98ce2778de6AF0101b);
+        token = MockERC20(0xfD2Ec58cE4c87b253567Ff98ce2778de6AF0101b);
 
         uint256 amount = 20e18;
         if (token.balanceOf(signer) == 0) {

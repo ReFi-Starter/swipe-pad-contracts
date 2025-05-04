@@ -3,12 +3,12 @@ pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
 import {Pool} from "../src/Pool.sol";
-import {Droplet} from "../src/mock/MockERC20.sol";
+import {MockERC20} from "../src/mock/MockERC20.sol";
 import "../src/library/ConstantsLib.sol";
 
 contract CoreTest is Test {
     Pool public pool;
-    Droplet public token;
+    MockERC20 public token;
     address public host;
     address public alice;
     address public bob;
@@ -24,7 +24,7 @@ contract CoreTest is Test {
 
     function setUp() public {
         pool = new Pool();
-        token = new Droplet();
+        token = new MockERC20("Test Token", "TST", 18);
         host = vm.addr(1);
         alice = vm.addr(2);
         bob = vm.addr(3);
@@ -83,7 +83,11 @@ contract CoreTest is Test {
         helper_createPool();
 
         // Reset enableDeposit to false
-        vm.store(address(pool), 0x3e5fec24aa4dc4e5aee2e025e51e1392c72a2500577559fae9665c6d52bd6a31, 0);
+        vm.store(
+            address(pool),
+            0x3e5fec24aa4dc4e5aee2e025e51e1392c72a2500577559fae9665c6d52bd6a31,
+            0
+        );
 
         // Try reset success
         token.mint(alice, amountToDeposit);
@@ -128,7 +132,9 @@ contract CoreTest is Test {
         pool.selfRefund(poolId);
         uint256 res = token.balanceOf(alice);
 
-        uint256 expected = amountDeposited - (amountDeposited * pool.getPoolFeeRate(poolId)) / FEES_PRECISION;
+        uint256 expected = amountDeposited -
+            (amountDeposited * pool.getPoolFeeRate(poolId)) /
+            FEES_PRECISION;
         assertEq(res, expected);
         vm.stopPrank();
     }
@@ -326,7 +332,10 @@ contract CoreTest is Test {
         uint256 balanceAfter = token.balanceOf(host);
 
         assertEq(balanceAfter - balanceBefore, fees);
-        assertEq(pool.getFeesAccumulated(poolId) - pool.getFeesCollected(poolId), 0);
+        assertEq(
+            pool.getFeesAccumulated(poolId) - pool.getFeesCollected(poolId),
+            0
+        );
     }
 
     function test_collectRemainingBalance() external {
@@ -368,7 +377,8 @@ contract CoreTest is Test {
         // PoolId balance should be 0 after alice selfRefund
         assertEq(pool.getPoolBalance(poolId), 0);
         // Try collectFees after 0 balance since there's fees accumulated
-        uint256 fees = pool.getFeesAccumulated(poolId) - pool.getFeesCollected(poolId);
+        uint256 fees = pool.getFeesAccumulated(poolId) -
+            pool.getFeesCollected(poolId);
         assert(fees > 0);
         pool.collectFees(poolId);
 
@@ -465,7 +475,8 @@ contract CoreTest is Test {
         vm.warp(block.timestamp + 1 days);
         pool.setWinner(poolId, alice, winnings);
 
-        (uint256[] memory claimablePools, bool[] memory isClaimed) = pool.getClaimablePools(alice);
+        (uint256[] memory claimablePools, bool[] memory isClaimed) = pool
+            .getClaimablePools(alice);
 
         assertEq(claimablePools[0], pool.latestPoolId());
         assertEq(isClaimed[0], false);
@@ -483,7 +494,7 @@ contract CoreTest is Test {
         vm.warp(block.timestamp + 1 days);
         pool.setWinner(poolId, alice, winnings);
 
-        (address[] memory winner,) = pool.getWinnersDetails(1);
+        (address[] memory winner, ) = pool.getWinnersDetails(1);
         assertEq(winner[0], alice);
     }
 
@@ -572,7 +583,12 @@ contract CoreTest is Test {
         // Alice create pool
         vm.startPrank(alice);
         poolId2 = pool.createPool(
-            uint40(block.timestamp), uint40(block.timestamp + 10 days), "New", amountToDeposit, 0, address(token)
+            uint40(block.timestamp),
+            uint40(block.timestamp + 10 days),
+            "New",
+            amountToDeposit,
+            0,
+            address(token)
         );
         pool.enableDeposit(poolId2);
     }
