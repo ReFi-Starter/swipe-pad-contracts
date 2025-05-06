@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+/// @title Pool - A contract for managing time-based deposit pools with winners
+/// @author Your Name
+/// @notice Manages pools where users deposit a fixed amount, a host selects winners, and penalties may apply for early withdrawal
+/// @dev Uses Ownable2Step, AccessControl, Pausable for control and security
+/// @custom:security-contact security@yourplatform.com
+
 /// Interfaces
 import {IPool} from "./interface/IPool.sol";
 import {IERC20} from "./interface/IERC20.sol";
@@ -24,6 +30,8 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
+/// @notice Main contract for deposit pools
+/// @dev Handles participant deposits, winner selection, refunds, fees, and sponsorship
 contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     using SafeTransferLib for IERC20;
     using PoolAdminLib for IPool.PoolAdmin;
@@ -33,35 +41,67 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     using WinnerDetailLib for IPool.WinnerDetail;
     using SponsorDetailLib for IPool.SponsorDetail;
 
-    uint256 public latestPoolId; // Start from 1, 0 is invalid
+    /// @notice Latest pool ID (starts from 1, 0 is invalid)
+    uint256 public latestPoolId;
+    
+    /// @notice Role identifier for whitelisted pool hosts
+    /// @dev Keccak256 hash of "WHITELISTED_HOST"
     bytes32 public constant WHITELISTED_HOST = keccak256("WHITELISTED_HOST");
+    
+    /// @notice Role identifier for whitelisted pool sponsors
+    /// @dev Keccak256 hash of "WHITELISTED_SPONSOR"
     bytes32 public constant WHITELISTED_SPONSOR = keccak256("WHITELISTED_SPONSOR");
 
-    /// @dev Pool specific mappings
+    /// @notice Mapping of pool ID to admin details
     mapping(uint256 => PoolAdmin) public poolAdmin;
+    
+    /// @notice Mapping of pool ID to pool details
     mapping(uint256 => PoolDetail) public poolDetail;
+    
+    /// @notice Mapping of pool ID to the pool's token
     mapping(uint256 => IERC20) public poolToken;
+    
+    /// @notice Mapping of pool ID to balance information
     mapping(uint256 => PoolBalance) public poolBalance;
+    
+    /// @notice Mapping of pool ID to current status
     mapping(uint256 => POOLSTATUS) public poolStatus;
+    
+    /// @notice Mapping of pool ID to list of participant addresses
     mapping(uint256 => address[]) public participants;
+    
+    /// @notice Mapping of pool ID to list of winner addresses
     mapping(uint256 => address[]) public winners;
 
-    /// @dev Pool admin specific mappings
+    /// @notice Mapping of host address to their created pool IDs
     mapping(address => uint256[]) public createdPools;
+    
+    /// @notice Mapping to check if an address is the host for a pool
     mapping(address => mapping(uint256 poolId => bool)) public isHost;
 
-    /// @dev User specific mappings
+    /// @notice Mapping of participant address to pools they've joined
     mapping(address => uint256[]) public joinedPools;
+    
+    /// @notice Mapping to check if an address is a participant in a pool
     mapping(address => mapping(uint256 poolId => bool)) public isParticipant;
+    
+    /// @notice Mapping of participant details for each pool
     mapping(address => mapping(uint256 poolId => ParticipantDetail)) public participantDetail;
+    
+    /// @notice Mapping of winner details for each pool
     mapping(address => mapping(uint256 poolId => WinnerDetail)) public winnerDetail;
+    
+    /// @notice Mapping of winner address to pool IDs they can claim from
     mapping(address => uint256[]) public claimablePools;
 
-    /// @dev Sponsor specific mappings
+    /// @notice Mapping of sponsor details for each pool
     mapping(address => mapping(uint256 poolId => SponsorDetail)) public sponsorDetail;
+    
+    /// @notice Mapping of pool ID to list of sponsor addresses
     mapping(uint256 => address[]) public sponsors;
 
-    /// @notice Modifier to check if user is host
+    /// @notice Ensures only the pool host can call the function
+    /// @param poolId The ID of the pool
     modifier onlyHost(uint256 poolId) {
         if (!isHost[msg.sender][poolId]) {
             revert ErrorsLib.Unauthorized(msg.sender);
@@ -69,6 +109,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         _;
     }
 
+    /// @notice Initializes the contract, granting admin role to the deployer
     constructor() Ownable2Step(msg.sender) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
@@ -77,16 +118,14 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     // Participant Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Deposit tokens into a pool
-     * @param poolId The pool id
-     * @param amount The amount to deposit
-     * @dev Pool status must be DEPOSIT_ENABLED
-     * @dev Pool must not have started
-     * @dev User must not be a participant
-     * @dev Amount must be equal to depositAmountPerPerson
-     * @dev Emits Deposit event
-     */
+    /// @notice Deposit `amount` tokens into pool ID `poolId`
+    /// @dev Requires pool status DEPOSIT_ENABLED, user not already participant, and `amount` >= deposit amount. Extra is treated as donation.
+    /// @param poolId The ID of the pool to deposit into
+    /// @param amount The amount of tokens to deposit (must meet or exceed required deposit)
+    /// @return success True if deposit was successful
+    /// @custom:event Deposit Emitted on successful deposit
+    /// @custom:event ExtraDeposit Emitted if `amount` exceeds required deposit
+    /// @custom:event ParticipantRejoined Emitted if a previously refunded/claimed participant rejoins
     function deposit(uint256 poolId, uint256 amount) external whenNotPaused returns (bool) {
         require(poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED, "Deposit not enabled");
         require(!isParticipant[msg.sender][poolId], "Already in pool");
@@ -124,14 +163,11 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         return true;
     }
 
-    /**
-     * @notice Claim winning from a pool
-     * @param poolId The pool id
-     * @dev Pool status must be ENDED
-     * @dev User must be a winner
-     * @dev User must not have claimed
-     * @dev Emits WinningClaimed event
-     */
+    /// @notice Claim winnings for `winner` from pool ID `poolId`
+    /// @dev Transfers the available winnings to the `winner`. Can be called by anyone if winnings are available and not claimed.
+    /// @param poolId The ID of the pool
+    /// @param winner The address of the winner to claim for
+    /// @custom:event WinningsClaimed Emitted when winnings are successfully claimed
     function claimWinning(uint256 poolId, address winner) public whenNotPaused {
         require(!winnerDetail[winner][poolId].isClaimed(), "Already claimed");
 
@@ -145,7 +181,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.WinningsClaimed(poolId, winner, amount);
     }
 
-    /// @notice Claim winnings from multiple pools
+    /// @notice Claim winnings for multiple winners across specified pools
+    /// @dev Convenience function to batch claim winnings.
+    /// @param poolIds Array of pool IDs to claim from
+    /// @param _winners Array of winner addresses corresponding to `poolIds`
     function claimWinnings(uint256[] calldata poolIds, address[] calldata _winners) external whenNotPaused {
         require(poolIds.length == poolIds.length, "Invalid input");
         for (uint256 i; i < poolIds.length; i++) {
@@ -153,14 +192,11 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         }
     }
 
-    /**
-     * @notice Self refund from a pool
-     * @param poolId The pool id
-     * @dev Pool status must not be ENDED
-     * @dev User must be a participant
-     * @dev User must not have been refunded
-     * @dev Emits Refund event
-     */
+    /// @notice Withdraw your deposit from pool ID `poolId` before it starts
+    /// @dev Requires pool not STARTED or ENDED. Fees may apply if called close to start time.
+    /// @param poolId The ID of the pool to withdraw from
+    /// @custom:event Refund Emitted on successful refund
+    /// @custom:event FeesCharged Emitted if penalty fees were applied
     function selfRefund(uint256 poolId) external whenNotPaused {
         require(poolStatus[poolId] != POOLSTATUS.STARTED, "Pool started");
         require(poolStatus[poolId] != POOLSTATUS.ENDED, "Pool ended");
@@ -179,15 +215,12 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     // Sponsor Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Sponsor a pool
-     * @param poolId The pool id
-     * @param amount The amount to sponsor
-     * @dev Pool status must be INACTIVE or DEPOSIT_ENABLED
-     * @dev Pool must be created
-     * @dev Amount must be greater than 0
-     * @dev Emits Sponsorship event
-     */
+    /// @notice Add `amount` sponsorship tokens to pool ID `poolId` as `name`
+    /// @dev Only callable by whitelisted sponsors. Requires pool status INACTIVE or DEPOSIT_ENABLED.
+    /// @param name The name of the sponsor
+    /// @param poolId The ID of the pool to sponsor
+    /// @param amount The amount of tokens to sponsor
+    /// @custom:event SponsorshipAdded Emitted when sponsorship is added
     function sponsor(string calldata name, uint256 poolId, uint256 amount)
         external
         onlyRole(WHITELISTED_SPONSOR)
@@ -223,23 +256,22 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     // Host Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Create a new pool, current impletation allows only whitelisted address to create pool
-     * @param timeStart The start time of the pool
-     * @param timeEnd The end time of the pool
-     * @param poolName The name of the pool
-     * @param depositAmountPerPerson The amount to deposit per person
-     * @param penaltyFeeRate The penalty fee rate
-     * @param token The token to use for the pool
-     * @dev Pool status will be INACTIVE
-     * @dev Emits PoolCreated event
-     */
+    /// @notice Create a new pool named `poolName` with deposit amount `depositAmountPerPerson`
+    /// @dev Only callable by whitelisted hosts. Sets initial parameters and assigns `msg.sender` as host.
+    /// @param timeStart Pool deposit start timestamp
+    /// @param timeEnd Pool deposit end timestamp
+    /// @param poolName Name of the pool
+    /// @param depositAmountPerPerson Required deposit amount per participant (can be 0 for sponsored pools)
+    /// @param penaltyFeeRate Fee rate (basis points) for early withdrawal (e.g., 100 = 1%)
+    /// @param token Address of the ERC20 token used for the pool
+    /// @return poolId The ID of the newly created pool
+    /// @custom:event PoolCreated Emitted when pool is created
     function createPool(
         uint40 timeStart,
         uint40 timeEnd,
         string calldata poolName,
-        uint256 depositAmountPerPerson, // Can be 0 in case of sponsored pool
-        uint16 penaltyFeeRate, // 10000 = 100%
+        uint256 depositAmountPerPerson,
+        uint16 penaltyFeeRate,
         address token
     ) external onlyRole(WHITELISTED_HOST) whenNotPaused returns (uint256) {
         require(timeStart < timeEnd, "Invalid timing");
@@ -268,14 +300,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         return latestPoolId;
     }
 
-    /**
-     * @notice Enable deposit for a pool, to prevent frontrunning deposit
-     * @param poolId The pool id
-     * @dev Only the host can enable deposit
-     * @dev Pool status must be INACTIVE
-     * @dev Pool status will be changed to DEPOSIT_ENABLED
-     * @dev Emits PoolStatusChanged event
-     */
+    /// @notice Enable deposits for pool ID `poolId`
+    /// @dev Changes status from INACTIVE to DEPOSIT_ENABLED. Only callable by host.
+    /// @param poolId The ID of the pool
+    /// @custom:event PoolStatusChanged Emitted (status -> DEPOSIT_ENABLED)
     function enableDeposit(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.INACTIVE, "Pool already active");
 
@@ -283,25 +311,21 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.DEPOSIT_ENABLED);
     }
 
-    /**
-     * @notice Change pool name
-     * @param poolId The pool id
-     * @param poolName The new name of the pool
-     * @dev Only the host can change pool name
-     * @dev Emits PoolNameChanged event
-     */
+    /// @notice Change the name of pool ID `poolId` to `poolName`
+    /// @dev Only callable by host.
+    /// @param poolId The ID of the pool
+    /// @param poolName The new name for the pool
+    /// @custom:event PoolNameChanged Emitted when name is changed
     function changePoolName(uint256 poolId, string calldata poolName) external onlyHost(poolId) whenNotPaused {
         poolDetail[poolId].setPoolName(poolName);
         emit EventsLib.PoolNameChanged(poolId, poolName);
     }
 
-    /**
-     * @notice Change start time of a pool
-     * @param poolId The pool id
-     * @param timeStart The new start time
-     * @dev Only the host can change start time
-     * @dev Pool status must not be STARTED
-     */
+    /// @notice Change the start time of pool ID `poolId` to `timeStart`
+    /// @dev Only callable by host before the pool has started.
+    /// @param poolId The ID of the pool
+    /// @param timeStart The new start timestamp
+    /// @custom:event PoolStartTimeChanged Emitted when start time is changed
     function changeStartTime(uint256 poolId, uint40 timeStart) external onlyHost(poolId) whenNotPaused {
         require(
             poolStatus[poolId] == POOLSTATUS.INACTIVE || poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED,
@@ -312,13 +336,11 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.PoolStartTimeChanged(poolId, timeStart);
     }
 
-    /**
-     * @notice Change end time of a pool
-     * @param poolId The pool id
-     * @param timeEnd The new end time
-     * @dev Only the host can change end time
-     * @dev Pool status must not be ENDED
-     */
+    /// @notice Change the end time of pool ID `poolId` to `timeEnd`
+    /// @dev Only callable by host before the pool has ended.
+    /// @param poolId The ID of the pool
+    /// @param timeEnd The new end timestamp
+    /// @custom:event PoolEndTimeChanged Emitted when end time is changed
     function changeEndTime(uint256 poolId, uint40 timeEnd) external onlyHost(poolId) whenNotPaused {
         require(
             poolStatus[poolId] != POOLSTATUS.ENDED && poolStatus[poolId] != POOLSTATUS.DELETED, "Pool already ended"
@@ -328,14 +350,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.PoolEndTimeChanged(poolId, timeEnd);
     }
 
-    /**
-     * @notice Start a pool, to prevent further deposits
-     * @param poolId The pool id
-     * @dev Only the host can start the pool
-     * @dev Pool status must be DEPOSIT_ENABLED
-     * @dev Pool status will be changed to STARTED
-     * @dev Emits PoolStatusChanged event
-     */
+    /// @notice Start pool ID `poolId`, preventing further deposits
+    /// @dev Changes status from DEPOSIT_ENABLED to STARTED. Updates actual start time. Only callable by host.
+    /// @param poolId The ID of the pool
+    /// @custom:event PoolStatusChanged Emitted (status -> STARTED)
     function startPool(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.DEPOSIT_ENABLED, "Deposit not enabled yet");
 
@@ -344,14 +362,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.STARTED);
     }
 
-    /**
-     * @notice Re-enable deposit for a pool in case host wants to accept more deposit
-     * @param poolId The pool id
-     * @dev Only the host can re-enable deposit
-     * @dev Pool status must be STARTED
-     * @dev Pool status will be changed to DEPOSIT_ENABLED
-     * @dev Emits PoolStatusChanged event
-     */
+    /// @notice Re-enable deposits for pool ID `poolId` after starting
+    /// @dev Changes status from STARTED back to DEPOSIT_ENABLED. Only callable by host.
+    /// @param poolId The ID of the pool
+    /// @custom:event PoolStatusChanged Emitted (status -> DEPOSIT_ENABLED)
     function reenableDeposit(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.STARTED, "Pool not started");
 
@@ -359,14 +373,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.DEPOSIT_ENABLED);
     }
 
-    /**
-     * @notice End a pool
-     * @param poolId The pool id
-     * @dev Only the host can end the pool
-     * @dev Pool status must be STARTED
-     * @dev Pool status will be changed to ENDED
-     * @dev Emits PoolStatusChanged event
-     */
+    /// @notice End pool ID `poolId`, allowing winner selection and claims
+    /// @dev Changes status from STARTED to ENDED. Updates actual end time. Only callable by host.
+    /// @param poolId The ID of the pool
+    /// @custom:event PoolStatusChanged Emitted (status -> ENDED)
     function endPool(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.STARTED, "Pool not started");
 
@@ -375,29 +385,22 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.ENDED);
     }
 
-    /**
-     * @notice Delete a pool
-     * @param poolId The pool id
-     * @dev Only the host can delete the pool
-     * @dev Pool status will be changed to DELETED
-     * @dev Emits PoolStatusChanged event
-     */
+    /// @notice Mark pool ID `poolId` as deleted
+    /// @dev Allows participants to refund without penalty. Only callable by host.
+    /// @param poolId The ID of the pool
+    /// @custom:event PoolStatusChanged Emitted (status -> DELETED)
     function deletePool(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         poolStatus[poolId] = POOLSTATUS.DELETED;
 
         emit EventsLib.PoolStatusChanged(poolId, POOLSTATUS.DELETED);
     }
 
-    /**
-     * @notice Set winner of pool
-     * @param poolId The pool id
-     * @param winner The winner address
-     * @param amount The amount to set as winner
-     * @dev Only the host can set the winner
-     * @dev Winner must be a participant
-     * @dev Amount must be greater than or equal to pool balance
-     * @dev Emits WinnerSet event
-     */
+    /// @notice Designate `winner` to receive `amount` tokens from pool ID `poolId`
+    /// @dev Requires pool not INACTIVE or DELETED. `winner` must be participant. Deducts `amount` from pool balance.
+    /// @param poolId The ID of the pool
+    /// @param winner The address of the participant designated as a winner
+    /// @param amount The amount of tokens awarded to the winner
+    /// @custom:event WinnerSet Emitted when a winner amount is designated
     function setWinner(uint256 poolId, address winner, uint256 amount) public onlyHost(poolId) whenNotPaused {
         require(
             poolStatus[poolId] != POOLSTATUS.INACTIVE && poolStatus[poolId] != POOLSTATUS.DELETED, "Pool status invalid"
@@ -421,7 +424,11 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.WinnerSet(poolId, winner, amount);
     }
 
-    /// @notice Set multiple winners of pool
+    /// @notice Designate multiple winners `_winners` with corresponding `amounts` for pool ID `poolId`
+    /// @dev Convenience function to batch designate winners.
+    /// @param poolId The ID of the pool
+    /// @param _winners Array of winner addresses
+    /// @param amounts Array of corresponding amounts to award
     function setWinners(uint256 poolId, address[] calldata _winners, uint256[] calldata amounts)
         external
         onlyHost(poolId)
@@ -434,16 +441,12 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         }
     }
 
-    /**
-     * @notice Refund a participant
-     * @param poolId The pool id
-     * @param participant The participant address
-     * @dev Only the host can refund a participant
-     * @dev Pool status must be STARTED
-     * @dev Participant must be a participant
-     * @dev Pool balance must be greater than 0
-     * @dev Emits Refund event
-     */
+    /// @notice Refund `amount` tokens to `participant` from pool ID `poolId`
+    /// @dev Only callable by host. Requires pool not ENDED. Use `amount = 0` to refund deposit minus fees.
+    /// @param poolId The ID of the pool
+    /// @param participant The address of the participant to refund
+    /// @param amount The specific amount to refund (or 0 for default deposit minus fees)
+    /// @custom:event Refund Emitted on successful refund
     function refundParticipant(uint256 poolId, address participant, uint256 amount)
         external
         onlyHost(poolId)
@@ -457,12 +460,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         _refund(poolId, participant, amount);
     }
 
-    /**
-     * @notice Collect fees
-     * @param poolId The pool id
-     * @dev Only send to host
-     * @dev Emits FeesCollected event
-     */
+    /// @notice Collect accumulated penalty fees from pool ID `poolId`
+    /// @dev Transfers available fees to the caller (host).
+    /// @param poolId The ID of the pool
+    /// @custom:event FeesCollected Emitted when fees are collected
     function collectFees(uint256 poolId) external whenNotPaused {
         // Transfer fees to host
         uint256 fees = poolBalance[poolId].getFeesAccumulated() - poolBalance[poolId].getFeesCollected();
@@ -475,12 +476,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.FeesCollected(poolId, host, fees);
     }
 
-    /**
-     * @notice Collect remaining balance if any
-     * @param poolId The pool id
-     * @dev Only send to host
-     * @dev Emits RemainingBalanceCollected event
-     */
+    /// @notice Collect any remaining balance in pool ID `poolId` after it has ended/deleted
+    /// @dev Transfers remaining balance to the caller (host).
+    /// @param poolId The ID of the pool
+    /// @custom:event RemainingBalanceCollected Emitted when balance is collected
     function collectRemainingBalance(uint256 poolId) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.ENDED || poolStatus[poolId] == POOLSTATUS.DELETED, "Pool not ended");
         uint256 amount = poolBalance[poolId].getBalance();
@@ -493,16 +492,11 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         emit EventsLib.RemainingBalanceCollected(poolId, host, amount);
     }
 
-    /**
-     * @notice Forfeit winnings of a winner back to pool,
-     *          used when winner not claim for long time
-     * @param poolId The pool id
-     * @param winner The winner address
-     * @dev Only the host can forfeit winnings
-     * @dev Winner must have winnings
-     * @dev Winner must not have claimed
-     * @dev Emits WinningForfeited event
-     */
+    /// @notice Forfeit unclaimed winnings for `winner` in pool ID `poolId` back to the pool balance
+    /// @dev Only callable by host after a timelock period past the pool end time.
+    /// @param poolId The ID of the pool
+    /// @param winner The address of the winner whose winnings are forfeited
+    /// @custom:event WinningForfeited Emitted when winnings are forfeited
     function forfeitWinnings(uint256 poolId, address winner) external onlyHost(poolId) whenNotPaused {
         require(poolStatus[poolId] == POOLSTATUS.ENDED, "Pool not ended");
         require(block.timestamp > poolDetail[poolId].getTimeEnd() + FORFEIT_WINNINGS_TIMELOCK, "Still in timelock");
@@ -522,101 +516,82 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     // View Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Get host of a pool
-     * @param poolId The pool id
-     */
+    /// @notice Get the host address for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return Host address
     function getHost(uint256 poolId) external view returns (address) {
         return poolAdmin[poolId].getHost();
     }
 
-    /**
-     * @notice Get sponsors of a pool
-     * @param poolId The pool id
-     */
+    /// @notice Get all sponsor addresses for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return Array of sponsor addresses
     function getSponsors(uint256 poolId) external view returns (address[] memory) {
         return sponsors[poolId];
     }
 
-    /**
-     * @notice Get sponsor details of a pool
-     * @param poolId The pool id
-     * @param _sponsor The sponsor address
-     */
+    /// @notice Get details for sponsor `_sponsor` in pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @param _sponsor The sponsor address
+    /// @return Sponsor details (name, amount sponsored)
     function getSponsorDetail(uint256 poolId, address _sponsor) external view returns (IPool.SponsorDetail memory) {
         return sponsorDetail[_sponsor][poolId];
     }
 
-    /**
-     * @notice Get fees rate of late refund
-     * @param poolId The pool id
-     * @return penaltyFeeRate The penalty fee rate
-     */
+    /// @notice Get the penalty fee rate (basis points) for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return penaltyFeeRate The penalty fee rate (e.g., 100 = 1%)
     function getPoolFeeRate(uint256 poolId) public view returns (uint16) {
         return poolAdmin[poolId].getPenaltyFeeRate();
     }
 
-    /**
-     * @notice Get pool details
-     * @param poolId The pool id
-     * @return poolDetail The pool details
-     */
+    /// @notice Get details for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return poolDetail Struct containing pool details (times, name, deposit amount)
     function getPoolDetail(uint256 poolId) external view returns (IPool.PoolDetail memory) {
         return poolDetail[poolId];
     }
 
-    /**
-     * @notice Get pool balance
-     * @param poolId The pool id
-     * @return balance The balance of the pool
-     */
+    /// @notice Get the current token balance for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return balance The current token balance of the pool
     function getPoolBalance(uint256 poolId) external view returns (uint256) {
         return poolBalance[poolId].getBalance();
     }
 
-    /**
-     * @notice Get sponsored balance of a pool
-     * @param poolId The pool id
-     * @return sponsorshipAmount The sponsored balance of the pool
-     */
+    /// @notice Get the total sponsored amount for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return sponsorshipAmount The total amount sponsored
     function getSponsorshipAmount(uint256 poolId) external view returns (uint256) {
         return poolBalance[poolId].getSponsorshipAmount();
     }
 
-    /**
-     * @notice Get fees accumulated in a pool
-     * @param poolId The pool id
-     * @return feesAccumulated The fees accumulated in the pool
-     */
+    /// @notice Get the total penalty fees accumulated in pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return feesAccumulated The total fees accumulated
     function getFeesAccumulated(uint256 poolId) external view returns (uint256) {
         return poolBalance[poolId].getFeesAccumulated();
     }
 
-    /**
-     * @notice Get fees collected in a pool
-     * @param poolId The pool id
-     * @return feesCollected The fees collected in the pool
-     */
+    /// @notice Get the amount of penalty fees already collected by the host for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return feesCollected The amount of fees collected
     function getFeesCollected(uint256 poolId) external view returns (uint256) {
         return poolBalance[poolId].getFeesCollected();
     }
 
-    /**
-     * @notice Get deposit of a participant in a pool
-     * @param participant The participant address
-     * @param poolId The pool id
-     * @return deposit The deposit of the participant
-     */
+    /// @notice Get the deposit amount for `participant` in pool ID `poolId`
+    /// @param participant The participant address
+    /// @param poolId The ID of the pool
+    /// @return deposit The participant's deposit amount
     function getParticipantDeposit(address participant, uint256 poolId) public view returns (uint256) {
         return ParticipantDetailLib.getDeposit(participantDetail, participant, poolId);
     }
 
-    /**
-     * @notice Get details of a participant in a pool
-     * @param participant The participant address
-     * @param poolId The pool id
-     * @return participantDetail The participant details
-     */
+    /// @notice Get details for `participant` in pool ID `poolId`
+    /// @param participant The participant address
+    /// @param poolId The ID of the pool
+    /// @return participantDetail Struct containing participant details (deposit, fees, status)
     function getParticipantDetail(address participant, uint256 poolId)
         public
         view
@@ -625,68 +600,54 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         return participantDetail[participant][poolId];
     }
 
-    /**
-     * @notice Get amount won by a winner in a pool
-     * @param poolId The pool id
-     * @param winner The winner address
-     * @return amountWon The amount won by the winner
-     */
+    /// @notice Get the total amount designated as winnings for `winner` in pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @param winner The winner address
+    /// @return amountWon The total amount awarded
     function getWinningAmount(uint256 poolId, address winner) external view returns (uint256) {
         return winnerDetail[winner][poolId].getAmountWon();
     }
 
-    /**
-     * @notice Get details of a winner in a pool
-     * @param poolId The pool id
-     * @param winner The winner address
-     * @return winnerDetail The winner details
-     */
+    /// @notice Get details for `winner` in pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @param winner The winner address
+    /// @return winnerDetail Struct containing winner details (amount won, claimed, forfeited)
     function getWinnerDetail(uint256 poolId, address winner) external view returns (IPool.WinnerDetail memory) {
         return winnerDetail[winner][poolId];
     }
 
-    /**
-     * @notice Get created pools by a host
-     * @param host The host address
-     * @return poolIds The pool ids created by the host
-     */
+    /// @notice Get all pool IDs created by `host`
+    /// @param host The host address
+    /// @return poolIds Array of pool IDs created by the host
     function getPoolsCreatedBy(address host) external view returns (uint256[] memory) {
         return createdPools[host];
     }
 
-    /**
-     * @notice Get joined pools by a participant
-     * @param participant The participant address
-     * @return poolIds The pool ids joined by the participant
-     */
+    /// @notice Get all pool IDs joined by `participant`
+    /// @param participant The participant address
+    /// @return poolIds Array of pool IDs joined by the participant
     function getPoolsJoinedBy(address participant) external view returns (uint256[] memory) {
         return joinedPools[participant];
     }
 
-    /**
-     * @notice Get participants list of a pool
-     * @param poolId The pool id
-     * @return participants The list of participants
-     */
+    /// @notice Get all participant addresses for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return participants Array of participant addresses
     function getParticipants(uint256 poolId) external view returns (address[] memory) {
         return participants[poolId];
     }
 
-    /**
-     * @notice Get winners of a pool
-     * @param poolId The pool id
-     * @return winners The list of winners
-     */
+    /// @notice Get all winner addresses for pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return winners Array of winner addresses
     function getWinners(uint256 poolId) external view returns (address[] memory) {
         return winners[poolId];
     }
 
-    /**
-     * @notice Get claimable pools of a winner
-     * @param winner The winner address
-     * @return claimablePools The list of claimable pools
-     * @return isClaimed The list of claim status
-     */
+    /// @notice Get all pool IDs `winner` can claim winnings from
+    /// @param winner The winner address
+    /// @return claimablePools Array of pool IDs with claimable winnings
+    /// @return isClaimed Array indicating if winnings have been claimed for each pool ID
     function getClaimablePools(address winner) external view returns (uint256[] memory, bool[] memory) {
         bool[] memory isClaimed = new bool[](claimablePools[winner].length);
         for (uint256 i; i < claimablePools[winner].length; i++) {
@@ -695,12 +656,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         return (claimablePools[winner], isClaimed);
     }
 
-    /**
-     * @notice Get winners details in array of structs of a pool
-     * @param poolId The pool id
-     * @return winners The list of winners
-     * @return _winners The list of winners details
-     */
+    /// @notice Get details for all winners in pool ID `poolId`
+    /// @param poolId The ID of the pool
+    /// @return winners Array of winner addresses
+    /// @return _winners Array of corresponding WinnerDetail structs
     function getWinnersDetails(uint256 poolId) external view returns (address[] memory, IPool.WinnerDetail[] memory) {
         IPool.WinnerDetail[] memory _winners = new IPool.WinnerDetail[](winners[poolId].length);
         for (uint256 i; i < winners[poolId].length; i++) {
@@ -709,7 +668,16 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
         return (winners[poolId], _winners);
     }
 
-    // @dev Get everthing about a pool
+    /// @notice Get all core information for pool ID `poolId`
+    /// @dev Returns admin, details, balance, status, token, participants, and winners. Useful for UIs.
+    /// @param poolId The ID of the pool
+    /// @return _poolAdmin Admin details
+    /// @return _poolDetail Pool details
+    /// @return _poolBalance Balance information
+    /// @return _poolStatus Current status
+    /// @return _poolToken Address of the pool token
+    /// @return _participants Array of participant addresses
+    /// @return _winners Array of winner addresses
     function getAllPoolInfo(uint256 poolId)
         external
         view
@@ -738,14 +706,25 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     // Admin Functions
     // ----------------------------------------------------------------------------
 
+    /// @notice Pause all contract interactions (except owner functions)
+    /// @dev Only callable by contract owner. Useful for emergencies.
+    /// @custom:event Paused Emitted when contract is paused
     function pause() external onlyOwner {
         _pause();
     }
 
+    /// @notice Resume contract interactions after a pause
+    /// @dev Only callable by contract owner.
+    /// @custom:event Unpaused Emitted when contract is unpaused
     function unpause() external onlyOwner {
         _unpause();
     }
 
+    /// @notice Withdraw `amount` of `token` in an emergency
+    /// @dev Only callable by owner when the contract is paused. Use with extreme caution.
+    /// @param token The ERC20 token address to withdraw
+    /// @param amount The amount to withdraw
+    /// @custom:event EmergencyWithdraw Emitted when emergency withdrawal occurs
     function emergencyWithdraw(IERC20 token, uint256 amount) external onlyOwner whenPaused {
         token.safeTransfer(msg.sender, amount);
     }
@@ -755,10 +734,10 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     // ----------------------------------------------------------------------------
 
     /**
-     * @dev refund a participant
+     * @dev Internal logic to process a participant refund
      * @param poolId The pool id
      * @param participant The participant address
-     * @param amount The amount to refund
+     * @param amount The specific amount to refund (or 0 to use deposit minus fees)
      */
     function _refund(uint256 poolId, address participant, uint256 amount) internal {
         uint256 deposited = ParticipantDetailLib.getDeposit(participantDetail, participant, poolId);
@@ -789,7 +768,7 @@ contract Pool is IPool, Ownable2Step, AccessControl, Pausable {
     }
 
     /**
-     * @notice Apply fees to a participant if event is < 24 hours to start
+     * @dev Internal logic to apply penalty fees for early withdrawal
      * @param poolId The pool id
      */
     function _applyFees(uint256 poolId) internal {
