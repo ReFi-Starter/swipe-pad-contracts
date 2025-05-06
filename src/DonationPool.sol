@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+/// @title DonationPool - A decentralized crowdfunding platform
+/// @author ottodevs
+/// @notice This contract allows users to create and manage donation campaigns with different funding models
+/// @dev Implements crowdfunding functionality with ALL_OR_NOTHING and KEEP_WHAT_YOU_RAISE models
+/// @custom:security-contact 5030059+ottodevs@users.noreply.github.com
+
 /// Interfaces
 import {IDonationPool} from "./interface/IDonationPool.sol";
 import {IERC20} from "./interface/IERC20.sol";
@@ -21,6 +27,8 @@ import {Ownable2Step} from "./dependency/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
+/// @notice Main contract for managing donation campaigns
+/// @dev Inherits from Ownable2Step, AccessControl, and Pausable for security and control
 contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
     using SafeTransferLib for IERC20;
     using DonationPoolAdminLib for IDonationPool.PoolAdmin;
@@ -28,33 +36,54 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
     using DonationPoolBalanceLib for IDonationPool.PoolBalance;
     using DonorDetailLib for IDonationPool.DonorDetail;
 
+    /// @notice Role identifier for admin privileges
+    /// @dev Keccak256 hash of "ADMIN_ROLE"
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
-    uint256 public latestPoolId; // Start from 1, 0 is invalid
-    uint16 public platformFeeRate; // Default platform fee rate
+    /// @notice Latest campaign ID (starts from 1, 0 is invalid)
+    uint256 public latestPoolId;
+    
+    /// @notice Platform fee rate in basis points (e.g., 100 = 1%)
+    uint16 public platformFeeRate;
 
-    /// @dev Pool specific mappings
+    /// @notice Mapping of campaign ID to admin details
     mapping(uint256 => PoolAdmin) public poolAdmin;
+    
+    /// @notice Mapping of campaign ID to campaign details
     mapping(uint256 => PoolDetail) public poolDetail;
+    
+    /// @notice Mapping of campaign ID to donation token
     mapping(uint256 => IERC20) public poolToken;
+    
+    /// @notice Mapping of campaign ID to balance information
     mapping(uint256 => PoolBalance) public poolBalance;
+    
+    /// @notice Mapping of campaign ID to current status
     mapping(uint256 => POOLSTATUS) public poolStatus;
+    
+    /// @notice Mapping of campaign ID to list of donors
     mapping(uint256 => address[]) public donors;
 
-    /// @dev Creator specific mappings
-    mapping(address => uint256[]) public createdProjects;
+    /// @notice Mapping of creator address to their campaign IDs
+    mapping(address => uint256[]) public createdCampaigns;
+    
+    /// @notice Mapping to check if an address is a creator for a campaign
     mapping(address => mapping(uint256 poolId => bool)) public isCreator;
 
-    /// @dev Donor specific mappings
-    mapping(address => uint256[]) public donatedProjects;
+    /// @notice Mapping of donor address to campaigns they've donated to
+    mapping(address => uint256[]) public donatedCampaigns;
+    
+    /// @notice Mapping to check if an address has donated to a campaign
     mapping(address => mapping(uint256 poolId => bool)) public isDonor;
-    mapping(address => mapping(uint256 poolId => DonorDetail))
-        public donorDetail;
+    
+    /// @notice Mapping of donor details for each campaign
+    mapping(address => mapping(uint256 poolId => DonorDetail)) public donorDetail;
 
-    /// @dev Mapping for tracking collected platform fees by token
+    /// @notice Mapping of token address to total platform fees collected
     mapping(address => uint256) public platformFeesCollected;
 
-    /// @notice Modifier to check if caller is creator
+    /// @notice Ensures only the campaign creator can call the function
+    /// @param poolId The ID of the campaign
     modifier onlyCreator(uint256 poolId) {
         if (msg.sender != poolAdmin[poolId].getCreator()) {
             revert DonationErrorsLib.OnlyCreator(
@@ -65,15 +94,17 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         _;
     }
 
-    /// @notice Modifier to check if project is not disputed
+    /// @notice Ensures the campaign is not in disputed state
+    /// @param poolId The ID of the campaign
     modifier notDisputed(uint256 poolId) {
         if (poolAdmin[poolId].isDisputed()) {
-            revert DonationErrorsLib.ProjectDisputed(poolId);
+            revert DonationErrorsLib.CampaignDisputed(poolId);
         }
         _;
     }
 
-    /// @notice Constructor sets up the initial state
+    /// @notice Initializes the contract with default settings
+    /// @dev Sets up initial roles and platform fee
     constructor() Ownable2Step(msg.sender) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);
@@ -84,12 +115,14 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
     // Donor Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Donate to a project
-     * @param poolId The pool id
-     * @param amount The amount to donate
-     * @return success Whether the donation was successful
-     */
+    /// @notice Donate `amount` tokens to campaign ID `poolId`
+    /// @dev Handles platform fee calculation and updates all relevant state
+    /// @param poolId The ID of the campaign to donate to
+    /// @param amount The amount of tokens to donate
+    /// @return success True if the donation was successful
+    /// @custom:event DonationReceived Emitted when donation is received
+    /// @custom:event CampaignStatusChanged Emitted if campaign becomes successful
+    /// @custom:event FundingGoalReached Emitted if funding goal is reached
     function donate(
         uint256 poolId,
         uint256 amount
@@ -99,7 +132,7 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         }
 
         if (poolStatus[poolId] != POOLSTATUS.ACTIVE) {
-            revert DonationErrorsLib.ProjectNotActive(poolId);
+            revert DonationErrorsLib.CampaignNotActive(poolId);
         }
 
         // Calculate platform fee
@@ -111,7 +144,7 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         // Update donor details
         if (!isDonor[msg.sender][poolId]) {
             donors[poolId].push(msg.sender);
-            donatedProjects[msg.sender].push(poolId);
+            donatedCampaigns[msg.sender].push(poolId);
             isDonor[msg.sender][poolId] = true;
         }
 
@@ -127,7 +160,7 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
             poolStatus[poolId] == POOLSTATUS.ACTIVE
         ) {
             poolStatus[poolId] = POOLSTATUS.SUCCESSFUL;
-            emit DonationEventsLib.ProjectStatusChanged(
+            emit DonationEventsLib.CampaignStatusChanged(
                 poolId,
                 POOLSTATUS.SUCCESSFUL
             );
@@ -142,14 +175,16 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         return true;
     }
 
-    /**
-     * @notice Claim refund for failed ALL_OR_NOTHING project
-     * @param poolId The pool id
-     */
+    /// @notice Claim available refund for campaign ID `poolId`
+    /// @dev Only available for failed ALL_OR_NOTHING campaigns during the refund grace period
+    /// @param poolId The ID of the campaign to claim refund from
+    /// @custom:event RefundClaimed Emitted when refund is claimed
+    /// @custom:event CampaignStatusChanged Emitted if campaign status changes to FAILED
+    /// @custom:event FundingFailed Emitted if funding goal was not reached
     function claimRefund(uint256 poolId) external whenNotPaused {
-        // Check project status and funding model
+        // Check campaign status and funding model
         if (poolStatus[poolId] != POOLSTATUS.FAILED) {
-            // Project must be in FAILED state
+            // Campaign must be in FAILED state
             if (
                 poolDetail[poolId].hasFundingModel(
                     FUNDINGMODEL.ALL_OR_NOTHING
@@ -160,7 +195,7 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
             ) {
                 // Automatically mark as failed if conditions are met
                 poolStatus[poolId] = POOLSTATUS.FAILED;
-                emit DonationEventsLib.ProjectStatusChanged(
+                emit DonationEventsLib.CampaignStatusChanged(
                     poolId,
                     POOLSTATUS.FAILED
                 );
@@ -174,7 +209,7 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
             }
         }
 
-        // Ensure this is a refundable project
+        // Ensure this is a refundable campaign
         if (!poolDetail[poolId].hasFundingModel(FUNDINGMODEL.ALL_OR_NOTHING)) {
             revert DonationErrorsLib.NoRefundAvailable(poolId, msg.sender);
         }
@@ -187,7 +222,7 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
             revert DonationErrorsLib.NoRefundAvailable(poolId, msg.sender);
         }
 
-        // Get the end time for this project
+        // Get the end time for this campaign
         uint40 endTime = poolDetail[poolId].getEndTime();
 
         // Check if refund grace period is still valid using safe comparison
@@ -234,25 +269,26 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
     // Creator Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Create a new donation project
-     * @param startTime When the donation period starts
-     * @param endTime When the donation period ends
-     * @param projectName Name of the project
-     * @param projectDescription Description of the project
-     * @param projectUrl URL for more information
-     * @param imageUrl URL for project image
-     * @param fundingGoal Target amount to raise
-     * @param fundingModel Funding model (ALL_OR_NOTHING or KEEP_WHAT_YOU_RAISE)
-     * @param token Token used for donations (e.g., cUSD)
-     * @return poolId The ID of the created project
-     */
-    function createProject(
+    /// @notice Creates a new campaign named `campaignName` using token `token`
+    /// @dev Validates parameters, sets up initial state, and assigns `msg.sender` as creator
+    /// @param startTime Campaign start timestamp
+    /// @param endTime Campaign end timestamp
+    /// @param campaignName Name of the campaign
+    /// @param campaignDescription Description of the campaign
+    /// @param campaignUrl URL for more information
+    /// @param imageUrl URL for campaign image
+    /// @param fundingGoal Target amount to raise in token `token`
+    /// @param fundingModel Funding model (ALL_OR_NOTHING or KEEP_WHAT_YOU_RAISE)
+    /// @param token Address of the ERC20 token used for donations
+    /// @return poolId The ID of the newly created campaign
+    /// @custom:event CampaignCreated Emitted when campaign is created
+    /// @custom:event CampaignStatusChanged Emitted when campaign becomes active
+    function createCampaign(
         uint40 startTime,
         uint40 endTime,
-        string calldata projectName,
-        string calldata projectDescription,
-        string calldata projectUrl,
+        string calldata campaignName,
+        string calldata campaignDescription,
+        string calldata campaignUrl,
         string calldata imageUrl,
         uint256 fundingGoal,
         FUNDINGMODEL fundingModel,
@@ -284,9 +320,9 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         // Pool details
         poolDetail[latestPoolId].setStartTime(startTime);
         poolDetail[latestPoolId].setEndTime(endTime);
-        poolDetail[latestPoolId].setProjectName(projectName);
-        poolDetail[latestPoolId].setProjectDescription(projectDescription);
-        poolDetail[latestPoolId].setProjectUrl(projectUrl);
+        poolDetail[latestPoolId].setCampaignName(campaignName);
+        poolDetail[latestPoolId].setCampaignDescription(campaignDescription);
+        poolDetail[latestPoolId].setCampaignUrl(campaignUrl);
         poolDetail[latestPoolId].setImageUrl(imageUrl);
         poolDetail[latestPoolId].fundingGoal = fundingGoal;
         poolDetail[latestPoolId].fundingModel = fundingModel;
@@ -295,7 +331,7 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         poolAdmin[latestPoolId].setCreator(msg.sender);
         poolAdmin[latestPoolId].setPlatformFeeRate(platformFeeRate);
         isCreator[msg.sender][latestPoolId] = true;
-        createdProjects[msg.sender].push(latestPoolId);
+        createdCampaigns[msg.sender].push(latestPoolId);
 
         // Pool token
         poolToken[latestPoolId] = IERC20(token);
@@ -303,16 +339,16 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         // Set pool status
         poolStatus[latestPoolId] = POOLSTATUS.ACTIVE;
 
-        emit DonationEventsLib.ProjectCreated(
+        emit DonationEventsLib.CampaignCreated(
             latestPoolId,
             msg.sender,
-            projectName,
+            campaignName,
             fundingGoal,
             token,
             fundingModel
         );
 
-        emit DonationEventsLib.ProjectStatusChanged(
+        emit DonationEventsLib.CampaignStatusChanged(
             latestPoolId,
             POOLSTATUS.ACTIVE
         );
@@ -320,50 +356,50 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         return latestPoolId;
     }
 
-    /**
-     * @notice Update project details
-     * @param poolId The pool id
-     * @param projectName New name for the project
-     * @param projectDescription New description for the project
-     * @param projectUrl New URL for more information
-     * @param imageUrl New URL for project image
-     */
-    function updateProjectDetails(
+    /// @notice Update details for campaign ID `poolId`
+    /// @dev Updates name to `campaignName`, description to `campaignDescription`, etc. Only callable by creator while active.
+    /// @param poolId The ID of the campaign to update
+    /// @param campaignName New name for the campaign
+    /// @param campaignDescription New description for the campaign
+    /// @param campaignUrl New URL for more information
+    /// @param imageUrl New URL for campaign image
+    /// @custom:event CampaignDetailsUpdated Emitted when details are updated
+    function updateCampaignDetails(
         uint256 poolId,
-        string calldata projectName,
-        string calldata projectDescription,
-        string calldata projectUrl,
+        string calldata campaignName,
+        string calldata campaignDescription,
+        string calldata campaignUrl,
         string calldata imageUrl
     ) external whenNotPaused onlyCreator(poolId) notDisputed(poolId) {
         if (poolStatus[poolId] != POOLSTATUS.ACTIVE) {
-            revert DonationErrorsLib.ProjectNotActive(poolId);
+            revert DonationErrorsLib.CampaignNotActive(poolId);
         }
 
-        poolDetail[poolId].setProjectName(projectName);
-        poolDetail[poolId].setProjectDescription(projectDescription);
-        poolDetail[poolId].setProjectUrl(projectUrl);
+        poolDetail[poolId].setCampaignName(campaignName);
+        poolDetail[poolId].setCampaignDescription(campaignDescription);
+        poolDetail[poolId].setCampaignUrl(campaignUrl);
         poolDetail[poolId].setImageUrl(imageUrl);
 
-        emit DonationEventsLib.ProjectDetailsUpdated(
+        emit DonationEventsLib.CampaignDetailsUpdated(
             poolId,
-            projectName,
-            projectDescription,
-            projectUrl,
+            campaignName,
+            campaignDescription,
+            campaignUrl,
             imageUrl
         );
     }
 
-    /**
-     * @notice Change the end time of a project
-     * @param poolId The pool id
-     * @param endTime New end time
-     */
+    /// @notice Change the end time for campaign ID `poolId` to `endTime`
+    /// @dev Only callable by creator. Must respect MIN/MAX funding periods.
+    /// @param poolId The ID of the campaign to update
+    /// @param endTime New end timestamp for the campaign
+    /// @custom:event CampaignEndTimeChanged Emitted when end time is changed
     function changeEndTime(
         uint256 poolId,
         uint40 endTime
     ) external whenNotPaused onlyCreator(poolId) notDisputed(poolId) {
         if (poolStatus[poolId] != POOLSTATUS.ACTIVE) {
-            revert DonationErrorsLib.ProjectNotActive(poolId);
+            revert DonationErrorsLib.CampaignNotActive(poolId);
         }
 
         uint40 startTime = poolDetail[poolId].getStartTime();
@@ -381,23 +417,23 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
 
         poolDetail[poolId].setEndTime(endTime);
 
-        emit DonationEventsLib.ProjectEndTimeChanged(poolId, endTime);
+        emit DonationEventsLib.CampaignEndTimeChanged(poolId, endTime);
     }
 
-    /**
-     * @notice Withdraw funds from a successful project or KEEP_WHAT_YOU_RAISE project after deadline
-     * @param poolId The pool id
-     */
+    /// @notice Withdraw collected funds from campaign ID `poolId`
+    /// @dev Available for successful campaigns or KEEP_WHAT_YOU_RAISE after deadline. Funds sent to creator.
+    /// @param poolId The ID of the campaign to withdraw from
+    /// @custom:event FundsWithdrawn Emitted when funds are withdrawn
     function withdrawFunds(
         uint256 poolId
     ) external whenNotPaused onlyCreator(poolId) notDisputed(poolId) {
         bool canWithdraw = false;
 
-        // For successful projects (reached funding goal)
+        // For successful campaigns (reached funding goal)
         if (poolStatus[poolId] == POOLSTATUS.SUCCESSFUL) {
             canWithdraw = true;
         }
-        // For KEEP_WHAT_YOU_RAISE projects after deadline
+        // For KEEP_WHAT_YOU_RAISE campaigns after deadline
         else if (
             poolDetail[poolId].hasFundingModel(
                 FUNDINGMODEL.KEEP_WHAT_YOU_RAISE
@@ -441,19 +477,20 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         emit DonationEventsLib.FundsWithdrawn(poolId, msg.sender, amount);
     }
 
-    /**
-     * @notice Cancel a project (only if no donations received)
-     * @param poolId The pool id
-     */
-    function cancelProject(
+    /// @notice Cancel campaign ID `poolId`
+    /// @dev Only callable by creator if the campaign is active and has received zero donations.
+    /// @param poolId The ID of the campaign to cancel
+    /// @custom:event CampaignCancelled Emitted when campaign is cancelled
+    /// @custom:event CampaignStatusChanged Emitted when status changes to DELETED
+    function cancelCampaign(
         uint256 poolId
     ) external whenNotPaused onlyCreator(poolId) {
         if (poolStatus[poolId] != POOLSTATUS.ACTIVE) {
-            revert DonationErrorsLib.ProjectNotActive(poolId);
+            revert DonationErrorsLib.CampaignNotActive(poolId);
         }
 
         if (poolBalance[poolId].getTotalDonations() > 0) {
-            revert DonationErrorsLib.ProjectHasDonations(
+            revert DonationErrorsLib.CampaignHasDonations(
                 poolId,
                 poolBalance[poolId].getTotalDonations()
             );
@@ -461,48 +498,41 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
 
         poolStatus[poolId] = POOLSTATUS.DELETED;
 
-        emit DonationEventsLib.ProjectCancelled(poolId, msg.sender);
-        emit DonationEventsLib.ProjectStatusChanged(poolId, POOLSTATUS.DELETED);
+        emit DonationEventsLib.CampaignCancelled(poolId, msg.sender);
+        emit DonationEventsLib.CampaignStatusChanged(poolId, POOLSTATUS.DELETED);
     }
 
     // ----------------------------------------------------------------------------
     // View Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Get project creator
-     * @param poolId The pool id
-     * @return creator The creator address
-     */
-    function getProjectCreator(uint256 poolId) external view returns (address) {
+    /// @notice Get the creator address for campaign ID `poolId`
+    /// @param poolId The ID of the campaign
+    /// @return creator The address of the campaign creator
+    function getCampaignCreator(uint256 poolId) external view returns (address) {
         return poolAdmin[poolId].getCreator();
     }
 
-    /**
-     * @notice Get project details
-     * @param poolId The pool id
-     * @return details The project details
-     */
-    function getProjectDetails(
+    /// @notice Get all details for campaign ID `poolId`
+    /// @param poolId The ID of the campaign
+    /// @return details Struct containing all campaign details
+    function getCampaignDetails(
         uint256 poolId
     ) external view returns (PoolDetail memory) {
         return poolDetail[poolId];
     }
 
-    /**
-     * @notice Get project balance
-     * @param poolId The pool id
-     * @return balance The current balance of the project
-     */
-    function getProjectBalance(uint256 poolId) external view returns (uint256) {
+    /// @notice Get the current token balance for campaign ID `poolId`
+    /// @param poolId The ID of the campaign
+    /// @return balance The current balance in tokens
+    function getCampaignBalance(uint256 poolId) external view returns (uint256) {
         return poolBalance[poolId].getBalance();
     }
 
-    /**
-     * @notice Get funding progress
-     * @param poolId The pool id
-     * @return progress The current funding progress (0-100%)
-     */
+    /// @notice Get the funding progress for campaign ID `poolId` as a percentage
+    /// @dev Returns percentage (0-100)
+    /// @param poolId The ID of the campaign
+    /// @return progress The funding progress as a percentage (0-100)
     function getFundingProgress(
         uint256 poolId
     ) external view returns (uint256) {
@@ -512,34 +542,28 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         return (poolBalance[poolId].getTotalDonations() * 100) / goal;
     }
 
-    /**
-     * @notice Get projects created by an address
-     * @param creator The creator address
-     * @return poolIds The project IDs created by this address
-     */
-    function getProjectsCreatedBy(
+    /// @notice Get all campaign IDs created by `creator`
+    /// @param creator The address to check
+    /// @return poolIds Array of campaign IDs created by this address
+    function getCampaignsCreatedBy(
         address creator
     ) external view returns (uint256[] memory) {
-        return createdProjects[creator];
+        return createdCampaigns[creator];
     }
 
-    /**
-     * @notice Get projects donated to by an address
-     * @param donor The donor address
-     * @return poolIds The project IDs donated to by this address
-     */
-    function getProjectsDonatedToBy(
+    /// @notice Get all campaign IDs `donor` has donated to
+    /// @param donor The address to check
+    /// @return poolIds Array of campaign IDs the address has donated to
+    function getCampaignsDonatedToBy(
         address donor
     ) external view returns (uint256[] memory) {
-        return donatedProjects[donor];
+        return donatedCampaigns[donor];
     }
 
-    /**
-     * @notice Get donation details for a donor
-     * @param poolId The pool id
-     * @param donor The donor address
-     * @return details The donation details
-     */
+    /// @notice Get donation details for `donor` in campaign ID `poolId`
+    /// @param poolId The ID of the campaign
+    /// @param donor The address of the donor
+    /// @return details Struct containing donation details (total donated, refund claimed)
     function getDonationDetails(
         uint256 poolId,
         address donor
@@ -547,35 +571,31 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         return donorDetail[donor][poolId];
     }
 
-    /**
-     * @notice Get all donors for a project
-     * @param poolId The pool id
-     * @return donors The list of donor addresses
-     */
-    function getProjectDonors(
+    /// @notice Get all donor addresses for campaign ID `poolId`
+    /// @param poolId The ID of the campaign
+    /// @return donors Array of donor addresses
+    function getCampaignDonors(
         uint256 poolId
     ) external view returns (address[] memory) {
         return donors[poolId];
     }
 
-    /**
-     * @notice Check if a project is successful (reached its funding goal)
-     * @param poolId The pool id
-     * @return isSuccessful Whether the project reached its funding goal
-     */
-    function isProjectSuccessful(uint256 poolId) external view returns (bool) {
+    /// @notice Check if campaign ID `poolId` is considered successful
+    /// @dev Returns true if status is SUCCESSFUL or funding goal is reached
+    /// @param poolId The ID of the campaign
+    /// @return isSuccessful True if campaign is successful
+    function isCampaignSuccessful(uint256 poolId) external view returns (bool) {
         return
             poolStatus[poolId] == POOLSTATUS.SUCCESSFUL ||
             (poolBalance[poolId].getTotalDonations() >=
                 poolDetail[poolId].getFundingGoal());
     }
 
-    /**
-     * @notice Check if a project has failed (deadline reached without meeting goal)
-     * @param poolId The pool id
-     * @return hasFailed Whether the project has failed
-     */
-    function hasProjectFailed(uint256 poolId) external view returns (bool) {
+    /// @notice Check if campaign ID `poolId` has failed
+    /// @dev Returns true if status is FAILED or conditions for failure are met (ALL_OR_NOTHING, ended, goal not met)
+    /// @param poolId The ID of the campaign
+    /// @return hasFailed True if campaign has failed
+    function hasCampaignFailed(uint256 poolId) external view returns (bool) {
         return
             poolStatus[poolId] == POOLSTATUS.FAILED ||
             (poolDetail[poolId].hasEnded() &&
@@ -586,17 +606,16 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
                 poolDetail[poolId].getFundingGoal());
     }
 
-    /**
-     * @notice Get all details about a project
-     * @param poolId The pool id
-     * @return _poolAdmin The pool admin details
-     * @return _poolDetail The pool details
-     * @return _poolBalance The pool balance details
-     * @return _poolStatus The pool status
-     * @return _poolToken The pool token address
-     * @return _donors The list of donors
-     */
-    function getAllProjectInfo(
+    /// @notice Get all core information for campaign ID `poolId`
+    /// @dev Returns admin, details, balance, status, token, and donors. Useful for UIs.
+    /// @param poolId The ID of the campaign
+    /// @return _poolAdmin Admin details of the campaign
+    /// @return _poolDetail Campaign details
+    /// @return _poolBalance Balance information
+    /// @return _poolStatus Current status
+    /// @return _poolToken Address of the donation token
+    /// @return _donors Array of donor addresses
+    function getAllCampaignInfo(
         uint256 poolId
     )
         external
@@ -624,25 +643,25 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
     // Admin Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Pause all contract operations (admin only)
-     */
+    /// @notice Pause all contract interactions (except admin functions)
+    /// @dev Only callable by accounts with ADMIN_ROLE. Useful for emergencies.
+    /// @custom:event Paused Emitted when contract is paused
     function pause() external onlyRole(ADMIN_ROLE) {
         _pause();
     }
 
-    /**
-     * @notice Unpause contract operations (admin only)
-     */
+    /// @notice Resume contract interactions after a pause
+    /// @dev Only callable by accounts with ADMIN_ROLE.
+    /// @custom:event Unpaused Emitted when contract is unpaused
     function unpause() external onlyRole(ADMIN_ROLE) {
         _unpause();
     }
 
-    /**
-     * @notice Flag a project as disputed (admin only)
-     * @param poolId The pool id
-     */
-    function flagProjectAsDisputed(
+    /// @notice Flag campaign ID `poolId` as disputed
+    /// @dev Prevents withdrawals and donations. Only callable by ADMIN_ROLE.
+    /// @param poolId The ID of the campaign to flag
+    /// @custom:event CampaignDisputed Emitted when campaign is marked as disputed
+    function flagCampaignAsDisputed(
         uint256 poolId
     ) external onlyRole(ADMIN_ROLE) {
         if (poolAdmin[poolId].isDisputed()) {
@@ -651,14 +670,15 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
 
         poolAdmin[poolId].setDisputed(true);
 
-        emit DonationEventsLib.ProjectDisputed(poolId, msg.sender);
+        emit DonationEventsLib.CampaignDisputed(poolId, msg.sender);
     }
 
-    /**
-     * @notice Resolve a disputed project (admin only)
-     * @param poolId The pool id
-     * @param resolveInFavorOfCreator Whether to resolve in favor of the creator
-     */
+    /// @notice Resolve dispute for campaign ID `poolId`. Optionally resolve in favor of creator.
+    /// @dev Removes disputed flag. If `resolveInFavorOfCreator` is false, sets status to FAILED to enable refunds. Only callable by ADMIN_ROLE.
+    /// @param poolId The ID of the campaign to resolve
+    /// @param resolveInFavorOfCreator If true, campaign continues; if false, enables refunds
+    /// @custom:event DisputeResolved Emitted when dispute is resolved
+    /// @custom:event CampaignStatusChanged Emitted if status changes to FAILED
     function resolveDispute(
         uint256 poolId,
         bool resolveInFavorOfCreator
@@ -672,7 +692,7 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         if (!resolveInFavorOfCreator) {
             // If not resolved in favor of creator, set status to FAILED to allow refunds
             poolStatus[poolId] = POOLSTATUS.FAILED;
-            emit DonationEventsLib.ProjectStatusChanged(
+            emit DonationEventsLib.CampaignStatusChanged(
                 poolId,
                 POOLSTATUS.FAILED
             );
@@ -681,10 +701,10 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         emit DonationEventsLib.DisputeResolved(poolId, resolveInFavorOfCreator);
     }
 
-    /**
-     * @notice Set platform fee rate (admin only)
-     * @param newFeeRate The new platform fee rate (0.01% to 100%)
-     */
+    /// @notice Set the platform fee rate to `newFeeRate` basis points
+    /// @dev Fee rate applies to future donations. Max rate is 10000 (100%). Only callable by ADMIN_ROLE.
+    /// @param newFeeRate New fee rate in basis points (e.g., 100 = 1%)
+    /// @custom:event PlatformFeeRateChanged Emitted when fee rate is updated
     function setPlatformFeeRate(
         uint16 newFeeRate
     ) external onlyRole(ADMIN_ROLE) {
@@ -698,10 +718,10 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         emit DonationEventsLib.PlatformFeeRateChanged(oldRate, newFeeRate);
     }
 
-    /**
-     * @notice Collect platform fees (admin only)
-     * @param token The token to collect fees for
-     */
+    /// @notice Collect accumulated platform fees for `token`
+    /// @dev Transfers collected fees to the caller (admin). Only callable by ADMIN_ROLE.
+    /// @param token The ERC20 token address to collect fees for
+    /// @custom:event PlatformFeeCollected Emitted when fees are collected
     function collectPlatformFees(IERC20 token) external onlyRole(ADMIN_ROLE) {
         uint256 feesToCollect = 0;
 
@@ -732,11 +752,11 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
         );
     }
 
-    /**
-     * @notice Emergency withdraw in case of critical issues (admin only, when paused)
-     * @param token The token to withdraw
-     * @param amount The amount to withdraw
-     */
+    /// @notice Withdraw `amount` of `token` in an emergency
+    /// @dev Only callable by ADMIN_ROLE when the contract is paused. Use with extreme caution.
+    /// @param token The ERC20 token address to withdraw
+    /// @param amount The amount to withdraw
+    /// @custom:event EmergencyWithdraw Emitted when emergency withdrawal occurs
     function emergencyWithdraw(
         IERC20 token,
         uint256 amount
@@ -750,18 +770,18 @@ contract DonationPool is IDonationPool, Ownable2Step, AccessControl, Pausable {
     // Access Control Functions
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Add an admin (owner only)
-     * @param account The account to grant admin role
-     */
+    /// @notice Grant ADMIN_ROLE to `account`
+    /// @dev Allows `account` to perform administrative actions. Only callable by contract owner.
+    /// @param account The address to grant admin role to
+    /// @custom:event RoleGranted Emitted when role is granted
     function addAdmin(address account) external onlyOwner {
         _grantRole(ADMIN_ROLE, account);
     }
 
-    /**
-     * @notice Remove an admin (owner only)
-     * @param account The account to revoke admin role
-     */
+    /// @notice Revoke ADMIN_ROLE from `account`
+    /// @dev Removes administrative privileges from `account`. Only callable by contract owner.
+    /// @param account The address to revoke admin role from
+    /// @custom:event RoleRevoked Emitted when role is revoked
     function removeAdmin(address account) external onlyOwner {
         _revokeRole(ADMIN_ROLE, account);
     }
