@@ -28,10 +28,10 @@ library DonationPoolDetailLib {
         return detail.fundingModel;
     }
 
-    function getProjectName(
+    function getCampaignName(
         IDonationPool.PoolDetail storage detail
     ) internal view returns (string memory) {
-        return detail.projectName;
+        return detail.campaignName;
     }
 
     function setStartTime(
@@ -48,25 +48,25 @@ library DonationPoolDetailLib {
         detail.endTime = endTime;
     }
 
-    function setProjectName(
+    function setCampaignName(
         IDonationPool.PoolDetail storage detail,
-        string memory projectName
+        string memory campaignName
     ) internal {
-        detail.projectName = projectName;
+        detail.campaignName = campaignName;
     }
 
-    function setProjectDescription(
+    function setCampaignDescription(
         IDonationPool.PoolDetail storage detail,
-        string memory projectDescription
+        string memory campaignDescription
     ) internal {
-        detail.projectDescription = projectDescription;
+        detail.campaignDescription = campaignDescription;
     }
 
-    function setProjectUrl(
+    function setCampaignUrl(
         IDonationPool.PoolDetail storage detail,
-        string memory projectUrl
+        string memory campaignUrl
     ) internal {
-        detail.projectUrl = projectUrl;
+        detail.campaignUrl = campaignUrl;
     }
 
     function setImageUrl(

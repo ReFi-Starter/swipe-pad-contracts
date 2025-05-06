@@ -17,20 +17,20 @@ interface IDonationPool {
     }
 
     struct PoolAdmin {
-        address creator; // Project creator
+        address creator; // Campaign creator
         uint16 platformFeeRate; // Fee rate for platform (0.01% to 100%)
-        bool disputed; // Flag for disputed projects
+        bool disputed; // Flag for disputed campaigns
     }
 
     struct PoolDetail {
         uint40 startTime; // Start time for the donation period
         uint40 endTime; // End time for the donation period
-        string projectName; // Name of the project
-        string projectDescription; // Description of the project
-        string projectUrl; // URL for more information
-        string imageUrl; // URL for project image
+        string campaignName; // Name of the campaign
+        string campaignDescription; // Description of the campaign
+        string campaignUrl; // URL for more information
+        string imageUrl; // URL for campaign image
         uint256 fundingGoal; // Target amount to raise
-        FUNDINGMODEL fundingModel; // Funding model for the project
+        FUNDINGMODEL fundingModel; // Funding model for the campaign
     }
 
     struct PoolBalance {
@@ -51,7 +51,7 @@ interface IDonationPool {
     // ----------------------------------------------------------------------------
 
     /**
-     * @notice Donate to a project
+     * @notice Donate to a campaign
      * @param poolId The pool id
      * @param amount The amount to donate
      * @return success Whether the donation was successful
@@ -59,7 +59,7 @@ interface IDonationPool {
     function donate(uint256 poolId, uint256 amount) external returns (bool);
 
     /**
-     * @notice Claim refund for failed ALL_OR_NOTHING project
+     * @notice Claim refund for failed ALL_OR_NOTHING campaign
      * @param poolId The pool id
      */
     function claimRefund(uint256 poolId) external;
@@ -69,24 +69,24 @@ interface IDonationPool {
     // ----------------------------------------------------------------------------
 
     /**
-     * @notice Create a new donation project
+     * @notice Create a new donation campaign
      * @param startTime When the donation period starts
      * @param endTime When the donation period ends
-     * @param projectName Name of the project
-     * @param projectDescription Description of the project
-     * @param projectUrl URL for more information
-     * @param imageUrl URL for project image
+     * @param campaignName Name of the campaign
+     * @param campaignDescription Description of the campaign
+     * @param campaignUrl URL for more information
+     * @param imageUrl URL for campaign image
      * @param fundingGoal Target amount to raise
      * @param fundingModel Funding model (ALL_OR_NOTHING or KEEP_WHAT_YOU_RAISE)
      * @param token Token used for donations (e.g., cUSD)
-     * @return poolId The ID of the created project
+     * @return poolId The ID of the created campaign
      */
-    function createProject(
+    function createCampaign(
         uint40 startTime,
         uint40 endTime,
-        string calldata projectName,
-        string calldata projectDescription,
-        string calldata projectUrl,
+        string calldata campaignName,
+        string calldata campaignDescription,
+        string calldata campaignUrl,
         string calldata imageUrl,
         uint256 fundingGoal,
         FUNDINGMODEL fundingModel,
@@ -94,66 +94,66 @@ interface IDonationPool {
     ) external returns (uint256);
 
     /**
-     * @notice Update project details
+     * @notice Update campaign details
      * @param poolId The pool id
-     * @param projectName New name for the project
-     * @param projectDescription New description for the project
-     * @param projectUrl New URL for more information
-     * @param imageUrl New URL for project image
+     * @param campaignName New name for the campaign
+     * @param campaignDescription New description for the campaign
+     * @param campaignUrl New URL for more information
+     * @param imageUrl New URL for campaign image
      */
-    function updateProjectDetails(
+    function updateCampaignDetails(
         uint256 poolId,
-        string calldata projectName,
-        string calldata projectDescription,
-        string calldata projectUrl,
+        string calldata campaignName,
+        string calldata campaignDescription,
+        string calldata campaignUrl,
         string calldata imageUrl
     ) external;
 
     /**
-     * @notice Change the end time of a project
+     * @notice Change the end time of a campaign
      * @param poolId The pool id
      * @param endTime New end time
      */
     function changeEndTime(uint256 poolId, uint40 endTime) external;
 
     /**
-     * @notice Withdraw funds from a successful project or KEEP_WHAT_YOU_RAISE project after deadline
+     * @notice Withdraw funds from a successful campaign or KEEP_WHAT_YOU_RAISE campaign after deadline
      * @param poolId The pool id
      */
     function withdrawFunds(uint256 poolId) external;
 
     /**
-     * @notice Cancel a project (only if no donations received)
+     * @notice Cancel a campaign (only if no donations received)
      * @param poolId The pool id
      */
-    function cancelProject(uint256 poolId) external;
+    function cancelCampaign(uint256 poolId) external;
 
     // ----------------------------------------------------------------------------
     // View Functions
     // ----------------------------------------------------------------------------
 
     /**
-     * @notice Get project creator
+     * @notice Get campaign creator
      * @param poolId The pool id
      * @return creator The creator address
      */
-    function getProjectCreator(uint256 poolId) external view returns (address);
+    function getCampaignCreator(uint256 poolId) external view returns (address);
 
     /**
-     * @notice Get project details
+     * @notice Get campaign details
      * @param poolId The pool id
-     * @return details The project details
+     * @return details The campaign details
      */
-    function getProjectDetails(
+    function getCampaignDetails(
         uint256 poolId
     ) external view returns (PoolDetail memory);
 
     /**
-     * @notice Get project balance
+     * @notice Get campaign balance
      * @param poolId The pool id
-     * @return balance The current balance of the project
+     * @return balance The current balance of the campaign
      */
-    function getProjectBalance(uint256 poolId) external view returns (uint256);
+    function getCampaignBalance(uint256 poolId) external view returns (uint256);
 
     /**
      * @notice Get funding progress
@@ -163,20 +163,20 @@ interface IDonationPool {
     function getFundingProgress(uint256 poolId) external view returns (uint256);
 
     /**
-     * @notice Get projects created by an address
+     * @notice Get campaigns created by an address
      * @param creator The creator address
-     * @return poolIds The project IDs created by this address
+     * @return poolIds The campaign IDs created by this address
      */
-    function getProjectsCreatedBy(
+    function getCampaignsCreatedBy(
         address creator
     ) external view returns (uint256[] memory);
 
     /**
-     * @notice Get projects donated to by an address
+     * @notice Get campaigns donated to by an address
      * @param donor The donor address
-     * @return poolIds The project IDs donated to by this address
+     * @return poolIds The campaign IDs donated to by this address
      */
-    function getProjectsDonatedToBy(
+    function getCampaignsDonatedToBy(
         address donor
     ) external view returns (uint256[] memory);
 
@@ -192,27 +192,27 @@ interface IDonationPool {
     ) external view returns (DonorDetail memory);
 
     /**
-     * @notice Get all donors for a project
+     * @notice Get all donors for a campaign
      * @param poolId The pool id
      * @return donors The list of donor addresses
      */
-    function getProjectDonors(
+    function getCampaignDonors(
         uint256 poolId
     ) external view returns (address[] memory);
 
     /**
-     * @notice Check if a project is successful (reached its funding goal)
+     * @notice Check if a campaign is successful (reached its funding goal)
      * @param poolId The pool id
-     * @return isSuccessful Whether the project reached its funding goal
+     * @return isSuccessful Whether the campaign reached its funding goal
      */
-    function isProjectSuccessful(uint256 poolId) external view returns (bool);
+    function isCampaignSuccessful(uint256 poolId) external view returns (bool);
 
     /**
-     * @notice Check if a project has failed (deadline reached without meeting goal)
+     * @notice Check if a campaign has failed (deadline reached without meeting goal)
      * @param poolId The pool id
-     * @return hasFailed Whether the project has failed
+     * @return hasFailed Whether the campaign has failed
      */
-    function hasProjectFailed(uint256 poolId) external view returns (bool);
+    function hasCampaignFailed(uint256 poolId) external view returns (bool);
 
     // ----------------------------------------------------------------------------
     // Admin Functions
@@ -229,13 +229,13 @@ interface IDonationPool {
     function unpause() external;
 
     /**
-     * @notice Flag a project as disputed (admin only)
+     * @notice Flag a campaign as disputed (admin only)
      * @param poolId The pool id
      */
-    function flagProjectAsDisputed(uint256 poolId) external;
+    function flagCampaignAsDisputed(uint256 poolId) external;
 
     /**
-     * @notice Resolve a disputed project (admin only)
+     * @notice Resolve a disputed campaign (admin only)
      * @param poolId The pool id
      * @param resolveInFavorOfCreator Whether to resolve in favor of the creator
      */

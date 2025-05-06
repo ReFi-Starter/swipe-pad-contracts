@@ -4,32 +4,32 @@ pragma solidity ^0.8.25;
 import {IDonationPool} from "../interface/IDonationPool.sol";
 
 library DonationEventsLib {
-    // Project creation and management events
-    event ProjectCreated(
+    // Campaign creation and management events
+    event CampaignCreated(
         uint256 indexed poolId,
         address indexed creator,
-        string projectName,
+        string campaignName,
         uint256 fundingGoal,
         address indexed token,
         IDonationPool.FUNDINGMODEL fundingModel
     );
 
-    event ProjectDetailsUpdated(
+    event CampaignDetailsUpdated(
         uint256 indexed poolId,
-        string projectName,
-        string projectDescription,
-        string projectUrl,
+        string campaignName,
+        string campaignDescription,
+        string campaignUrl,
         string imageUrl
     );
 
-    event ProjectEndTimeChanged(uint256 indexed poolId, uint40 endTime);
+    event CampaignEndTimeChanged(uint256 indexed poolId, uint40 endTime);
 
-    event ProjectStatusChanged(
+    event CampaignStatusChanged(
         uint256 indexed poolId,
         IDonationPool.POOLSTATUS status
     );
 
-    event ProjectCancelled(uint256 indexed poolId, address indexed creator);
+    event CampaignCancelled(uint256 indexed poolId, address indexed creator);
 
     // Donation related events
     event DonationReceived(
@@ -64,7 +64,7 @@ library DonationEventsLib {
     event PlatformFeeRateChanged(uint16 oldRate, uint16 newRate);
 
     // Dispute resolution events
-    event ProjectDisputed(uint256 indexed poolId, address indexed reporter);
+    event CampaignDisputed(uint256 indexed poolId, address indexed reporter);
 
     event DisputeResolved(
         uint256 indexed poolId,

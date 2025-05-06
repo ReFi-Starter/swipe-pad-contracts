@@ -15,8 +15,8 @@ library DonationErrorsLib {
     error InvalidFeeRate(uint16 feeRate);
 
     // State errors
-    error ProjectNotActive(uint256 poolId);
-    error ProjectAlreadyEnded(uint256 poolId);
+    error CampaignNotActive(uint256 poolId);
+    error CampaignAlreadyEnded(uint256 poolId);
     error DeadlineNotReached(uint256 poolId, uint40 endTime);
     error RefundPeriodExpired(uint256 poolId, uint40 endTime);
     error FundingGoalNotReached(
@@ -24,8 +24,8 @@ library DonationErrorsLib {
         uint256 currentAmount,
         uint256 goal
     );
-    error ProjectDisputed(uint256 poolId);
-    error ProjectHasDonations(uint256 poolId, uint256 totalDonations);
+    error CampaignDisputed(uint256 poolId);
+    error CampaignHasDonations(uint256 poolId, uint256 totalDonations);
 
     // Operation errors
     error NoRefundAvailable(uint256 poolId, address donor);

@@ -49,14 +49,14 @@ contract DonationPoolTest is Test {
         endTime = uint40(block.timestamp + 31 days);
     }
 
-    function testCreateProject() public {
+    function testCreateCampaign() public {
         vm.startPrank(creator);
         vm.warp(startTime - 1 days);
 
-        uint256 projectId = donationPool.createProject(
+        uint256 campaignId = donationPool.createCampaign(
             startTime,
             endTime,
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -67,23 +67,23 @@ contract DonationPoolTest is Test {
 
         vm.stopPrank();
 
-        assertTrue(projectId == 1, "Project ID should be 1");
+        assertTrue(campaignId == 1, "Campaign ID should be 1");
 
         // Convert enum to uint for comparison
         uint256 statusActive = uint256(IDonationPool.POOLSTATUS.ACTIVE);
         assertTrue(
-            uint256(donationPool.poolStatus(projectId)) == statusActive,
-            "Project should be active"
+            uint256(donationPool.poolStatus(campaignId)) == statusActive,
+            "Campaign should be active"
         );
 
         IDonationPool.PoolDetail memory details = donationPool
-            .getProjectDetails(projectId);
+            .getCampaignDetails(campaignId);
         assertTrue(details.startTime == startTime, "Start time mismatch");
         assertTrue(details.endTime == endTime, "End time mismatch");
         assertTrue(
-            keccak256(abi.encodePacked(details.projectName)) ==
-                keccak256(abi.encodePacked("Test Project")),
-            "Project name mismatch"
+            keccak256(abi.encodePacked(details.campaignName)) ==
+                keccak256(abi.encodePacked("Test Campaign")),
+            "Campaign name mismatch"
         );
         assertTrue(
             details.fundingGoal == FUNDING_GOAL,
@@ -97,14 +97,14 @@ contract DonationPoolTest is Test {
     }
 
     function testDonate() public {
-        // Create a project
+        // Create a campaign
         vm.startPrank(creator);
         vm.warp(startTime - 1 days);
 
-        uint256 projectId = donationPool.createProject(
+        uint256 campaignId = donationPool.createCampaign(
             startTime,
             endTime,
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -115,27 +115,27 @@ contract DonationPoolTest is Test {
 
         vm.stopPrank();
 
-        // Fast-forward to project start time
+        // Fast-forward to campaign start time
         vm.warp(startTime + 1);
 
         // Make a donation
         uint256 donationAmount = 20 * 10 ** 18;
         vm.startPrank(donor1);
-        bool success = donationPool.donate(projectId, donationAmount);
+        bool success = donationPool.donate(campaignId, donationAmount);
         vm.stopPrank();
 
         assertTrue(success == true, "Donation should succeed");
 
         // Check donation was recorded
         IDonationPool.DonorDetail memory donorDetail = donationPool
-            .getDonationDetails(projectId, donor1);
+            .getDonationDetails(campaignId, donor1);
         assertTrue(
             donorDetail.totalDonated == donationAmount,
             "Donation amount mismatch"
         );
 
         // Check progress
-        uint256 progress = donationPool.getFundingProgress(projectId);
+        uint256 progress = donationPool.getFundingProgress(campaignId);
         assertTrue(progress == 20, "Progress should be 20%");
 
         // Verify token transfer
@@ -145,15 +145,15 @@ contract DonationPoolTest is Test {
         );
     }
 
-    function testProjectSuccess() public {
-        // Create a project
+    function testCampaignSuccess() public {
+        // Create a campaign
         vm.startPrank(creator);
         vm.warp(startTime - 1 days);
 
-        uint256 projectId = donationPool.createProject(
+        uint256 campaignId = donationPool.createCampaign(
             startTime,
             endTime,
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -164,23 +164,23 @@ contract DonationPoolTest is Test {
 
         vm.stopPrank();
 
-        // Fast-forward to project start time
+        // Fast-forward to campaign start time
         vm.warp(startTime + 1);
 
         // Make donations to reach funding goal
         vm.startPrank(donor1);
-        donationPool.donate(projectId, 60 * 10 ** 18);
+        donationPool.donate(campaignId, 60 * 10 ** 18);
         vm.stopPrank();
 
         vm.startPrank(donor2);
-        donationPool.donate(projectId, 40 * 10 ** 18);
+        donationPool.donate(campaignId, 40 * 10 ** 18);
         vm.stopPrank();
 
-        // Check project status
+        // Check campaign status
         uint256 statusSuccessful = uint256(IDonationPool.POOLSTATUS.SUCCESSFUL);
         assertTrue(
-            uint256(donationPool.poolStatus(projectId)) == statusSuccessful,
-            "Project should be successful"
+            uint256(donationPool.poolStatus(campaignId)) == statusSuccessful,
+            "Campaign should be successful"
         );
 
         // Fast-forward to end time
@@ -189,7 +189,7 @@ contract DonationPoolTest is Test {
         // Creator withdraws funds
         uint256 creatorBalanceBefore = token.balanceOf(creator);
         vm.startPrank(creator);
-        donationPool.withdrawFunds(projectId);
+        donationPool.withdrawFunds(campaignId);
         vm.stopPrank();
 
         // Calculate expected amount (minus platform fee)
@@ -203,15 +203,15 @@ contract DonationPoolTest is Test {
         );
     }
 
-    function testProjectFailureAndRefund() public {
-        // Create a project
+    function testCampaignFailureAndRefund() public {
+        // Create a campaign
         vm.startPrank(creator);
         vm.warp(startTime - 1 days);
 
-        uint256 projectId = donationPool.createProject(
+        uint256 campaignId = donationPool.createCampaign(
             startTime,
             endTime,
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -222,13 +222,13 @@ contract DonationPoolTest is Test {
 
         vm.stopPrank();
 
-        // Fast-forward to project start time
+        // Fast-forward to campaign start time
         vm.warp(startTime + 1);
 
         // Make a partial donation
         uint256 donationAmount = 20 * 10 ** 18;
         vm.startPrank(donor1);
-        donationPool.donate(projectId, donationAmount);
+        donationPool.donate(campaignId, donationAmount);
         vm.stopPrank();
 
         // Fast-forward past end time
@@ -239,7 +239,7 @@ contract DonationPoolTest is Test {
 
         // Claim refund
         vm.startPrank(donor1);
-        donationPool.claimRefund(projectId);
+        donationPool.claimRefund(campaignId);
         vm.stopPrank();
 
         // Calculate expected refund (minus platform fee)
@@ -252,23 +252,23 @@ contract DonationPoolTest is Test {
             "Refund amount mismatch"
         );
 
-        // Check project status
+        // Check campaign status
         uint256 statusFailed = uint256(IDonationPool.POOLSTATUS.FAILED);
         assertTrue(
-            uint256(donationPool.poolStatus(projectId)) == statusFailed,
-            "Project should be marked as failed"
+            uint256(donationPool.poolStatus(campaignId)) == statusFailed,
+            "Campaign should be marked as failed"
         );
     }
 
     function testKeepWhatYouRaise() public {
-        // Create a project with KEEP_WHAT_YOU_RAISE model
+        // Create a campaign with KEEP_WHAT_YOU_RAISE model
         vm.startPrank(creator);
         vm.warp(startTime - 1 days);
 
-        uint256 projectId = donationPool.createProject(
+        uint256 campaignId = donationPool.createCampaign(
             startTime,
             endTime,
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -279,13 +279,13 @@ contract DonationPoolTest is Test {
 
         vm.stopPrank();
 
-        // Fast-forward to project start time
+        // Fast-forward to campaign start time
         vm.warp(startTime + 1);
 
         // Make a partial donation
         uint256 donationAmount = 20 * 10 ** 18;
         vm.startPrank(donor1);
-        donationPool.donate(projectId, donationAmount);
+        donationPool.donate(campaignId, donationAmount);
         vm.stopPrank();
 
         // Fast-forward past end time
@@ -294,7 +294,7 @@ contract DonationPoolTest is Test {
         // Creator should be able to withdraw funds even though goal wasn't met
         uint256 creatorBalanceBefore = token.balanceOf(creator);
         vm.startPrank(creator);
-        donationPool.withdrawFunds(projectId);
+        donationPool.withdrawFunds(campaignId);
         vm.stopPrank();
 
         // Calculate expected amount (minus platform fee)
@@ -313,15 +313,15 @@ contract DonationPoolTest is Test {
         donationPool.pause();
         vm.stopPrank();
 
-        // Attempt to create a project while paused
+        // Attempt to create a campaign while paused
         vm.startPrank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(bytes4(keccak256("EnforcedPause()")))
         );
-        donationPool.createProject(
+        donationPool.createCampaign(
             startTime,
             endTime,
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -338,10 +338,10 @@ contract DonationPoolTest is Test {
 
         // Now it should work
         vm.startPrank(creator);
-        uint256 projectId = donationPool.createProject(
+        uint256 campaignId = donationPool.createCampaign(
             startTime,
             endTime,
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -351,18 +351,18 @@ contract DonationPoolTest is Test {
         );
         vm.stopPrank();
 
-        assertTrue(projectId == 1, "Project ID should be 1");
+        assertTrue(campaignId == 1, "Campaign ID should be 1");
     }
 
     function testDisputeResolution() public {
-        // Create a project
+        // Create a campaign
         vm.startPrank(creator);
         vm.warp(startTime - 1 days);
 
-        uint256 projectId = donationPool.createProject(
+        uint256 campaignId = donationPool.createCampaign(
             startTime,
             endTime,
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -373,46 +373,46 @@ contract DonationPoolTest is Test {
 
         vm.stopPrank();
 
-        // Fast-forward to project start time
+        // Fast-forward to campaign start time
         vm.warp(startTime + 1);
 
         // Make donations to reach funding goal
         vm.startPrank(donor1);
-        donationPool.donate(projectId, 100 * 10 ** 18);
+        donationPool.donate(campaignId, 100 * 10 ** 18);
         vm.stopPrank();
 
-        // Admin flags project as disputed
+        // Admin flags campaign as disputed
         vm.startPrank(admin);
-        donationPool.flagProjectAsDisputed(projectId);
+        donationPool.flagCampaignAsDisputed(campaignId);
         vm.stopPrank();
 
         // Creator shouldn't be able to withdraw while disputed
         vm.startPrank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                DonationErrorsLib.ProjectDisputed.selector,
-                projectId
+                DonationErrorsLib.CampaignDisputed.selector,
+                campaignId
             )
         );
-        donationPool.withdrawFunds(projectId);
+        donationPool.withdrawFunds(campaignId);
         vm.stopPrank();
 
         // Admin resolves dispute in favor of refunds
         vm.startPrank(admin);
-        donationPool.resolveDispute(projectId, false);
+        donationPool.resolveDispute(campaignId, false);
         vm.stopPrank();
 
-        // Check that project is now marked as failed
+        // Check that campaign is now marked as failed
         uint256 statusFailed = uint256(IDonationPool.POOLSTATUS.FAILED);
         assertTrue(
-            uint256(donationPool.poolStatus(projectId)) == statusFailed,
-            "Project should be marked as failed"
+            uint256(donationPool.poolStatus(campaignId)) == statusFailed,
+            "Campaign should be marked as failed"
         );
 
         // Donor should be able to claim refund
         uint256 donor1BalanceBefore = token.balanceOf(donor1);
         vm.startPrank(donor1);
-        donationPool.claimRefund(projectId);
+        donationPool.claimRefund(campaignId);
         vm.stopPrank();
 
         // Calculate expected refund (minus platform fee)

@@ -34,12 +34,12 @@ contract MinimalDonationTest is Test {
         vm.stopPrank();
     }
 
-    function testCreateProject() public {
+    function testCreateCampaign() public {
         vm.startPrank(creator);
-        uint256 projectId = donationPool.createProject(
+        uint256 campaignId = donationPool.createCampaign(
             uint40(block.timestamp + 1 days),
             uint40(block.timestamp + 30 days),
-            "Test Project",
+            "Test Campaign",
             "Test Description",
             "https://example.com",
             "https://example.com/image.jpg",
@@ -49,11 +49,11 @@ contract MinimalDonationTest is Test {
         );
         vm.stopPrank();
 
-        assertTrue(projectId == 1, "Project ID should be 1");
+        assertTrue(campaignId == 1, "Campaign ID should be 1");
         assertEq(
-            uint256(donationPool.poolStatus(projectId)),
+            uint256(donationPool.poolStatus(campaignId)),
             uint256(IDonationPool.POOLSTATUS.ACTIVE),
-            "Project should be active"
+            "Campaign should be active"
         );
     }
 }

@@ -25,7 +25,7 @@ contract DonationPoolScript is Script {
         vm.stopBroadcast();
     }
 
-    function run_createProject() public {
+    function run_createCampaign() public {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         address signer = vm.addr(vm.envUint("PRIVATE_KEY"));
 
@@ -38,12 +38,12 @@ contract DonationPoolScript is Script {
             token.mint(signer, 1000e18);
         }
 
-        // Create a test project
-        uint256 poolId = donationPool.createProject(
+        // Create a test campaign
+        uint256 poolId = donationPool.createCampaign(
             uint40(block.timestamp + 2 days),
             uint40(block.timestamp + 2 days + 6 hours),
-            "Test Project",
-            "This is a test donation project",
+            "Test Campaign",
+            "This is a test donation campaign",
             "https://example.com",
             "https://example.com/image.jpg",
             100e18, // funding goal
@@ -51,7 +51,7 @@ contract DonationPoolScript is Script {
             address(token)
         );
 
-        // Make a donation to the project
+        // Make a donation to the campaign
         token.approve(address(donationPool), amount);
         donationPool.donate(poolId, amount);
 
