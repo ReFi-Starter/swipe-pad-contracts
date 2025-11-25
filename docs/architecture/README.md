@@ -63,3 +63,30 @@ See: `docs/diagrams/swipepad-contract-flow.mmd`
 - SafeERC20 for token transfers
 - Multi-sig protection for fund withdrawals
 EOF
+
+
+cat > README.md << 'EOF'
+# SwipePad - Smart Contracts
+
+Automated donation platform on Celo with smart contract-powered giving.
+
+## 📊 Contract Flow
+```mermaid
+graph TD
+    User[User Wallet] -->|Swipe/Donate| App[SwipePad App]
+    App -->|1. Record Swap| DST[DonationSwapTrigger]
+    App -->|2. Verify ID| SV[SelfVerification]
+    App -->|3. Boost Payment| BP[BoostPayment]
+    App -->|4. Direct Donation| DR[DonationRouter]
+    App -->|5. Fund Donation| PF[ProjectFund]
+    
+    DST -->|Auto-donates| cUSD[cUSD] --> PW[Project Wallet]
+    BP -->|100% to project| PW
+    DR -->|Route donation| PW
+    PF -->|Multi-sig pool| MS[Multi-Sig Wallet]
+    
+    style DST fill:#f9f,stroke:#333,stroke-width:2px
+    style BP fill:#bbf,stroke:#333,stroke-width:2px
+    style DR fill:#bfb,stroke:#333,stroke-width:2px
+    style PF fill:#ffb,stroke:#333,stroke-width:2px
+```
