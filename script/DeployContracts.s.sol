@@ -75,38 +75,3 @@ contract DeployContractsScript is Script {
         vm.writeJson(json, DEPLOYMENTS_FILE);
     }
 }
-'''''
-    {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        string memory rpcUrl = vm.envString("CELO_ALFAJORES_RPC"); // Use the correct env var name
-
-        // Check if required env vars are set
-        require(deployerPrivateKey != 0, "PRIVATE_KEY env var not set");
-        require(bytes(rpcUrl).length > 0, "CELO_ALFAJORES_RPC env var not set");
-
-        vm.startBroadcast(deployerPrivateKey);
-
-        console.log("Deploying MockERC20...");
-        token = new MockERC20("Mock Celo Dollar", "mcUSD", 18);
-        tokenAddr = address(token);
-        console.log("MockERC20 deployed at:", tokenAddr);
-
-        console.log("Deploying DonationPool...");
-        donationPool = new DonationPool();
-        donationPoolAddr = address(donationPool);
-        console.log("DonationPool deployed at:", donationPoolAddr);
-
-        console.log("Deploying Pool...");
-        pool = new Pool();
-        poolAddr = address(pool);
-        console.log("Pool deployed at:", poolAddr);
-
-        vm.stopBroadcast();
-
-        // Write deployed addresses to JSON file
-        writeDeployments(donationPoolAddr, poolAddr, tokenAddr);
-
-        console.log(
-            "Deployment successful and addresses saved to",
-            DEPLOYMENTS_FILE
-        );
